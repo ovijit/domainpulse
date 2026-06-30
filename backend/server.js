@@ -4,9 +4,17 @@ const sqlite3 = require("sqlite3").verbose();
 const dns = require("dns").promises;
 
 const app = express();
-const PORT = 5001;
 
-app.use(cors());
+const PORT = process.env.PORT || 5001;
+const HOST = "0.0.0.0";
+
+// CORS setup
+app.use(
+  cors({
+    origin: ["http://localhost:5173", process.env.FRONTEND_URL].filter(Boolean),
+  })
+);
+
 app.use(express.json());
 
 const db = new sqlite3.Database("./domainpulse.db");
@@ -74,6 +82,7 @@ app.get("/", (req, res) => {
       "GET /api/alerts",
       "DELETE /api/alerts",
       "GET /api/stats",
+      "GET /api/domains/:id/history",
     ],
   });
 });
@@ -113,9 +122,11 @@ app.post("/api/domains", async (req, res) => {
       const domainId = this.lastID;
 
       db.run(
-        `INSERT INTO nameserver_history 
+        `
+        INSERT INTO nameserver_history 
         (domain_id, domain, nameservers) 
-        VALUES (?, ?, ?)`,
+        VALUES (?, ?, ?)
+        `,
         [domainId, cleanedDomain, JSON.stringify(nameservers)]
       );
 
@@ -138,6 +149,8 @@ app.delete("/api/domains/:id", (req, res) => {
       return res.status(500).json({ error: "Failed to delete domain" });
     }
 
+    db.run("DELETE FROM nameserver_history WHERE domain_id = ?", [id]);
+
     res.json({ message: "Domain deleted successfully" });
   });
 });
@@ -154,10 +167,12 @@ app.post("/api/domains/:id/check", (req, res) => {
     const newNameservers = await getNameservers(domainRow.domain);
 
     db.get(
-      `SELECT * FROM nameserver_history 
-       WHERE domain_id = ? 
-       ORDER BY checked_at DESC 
-       LIMIT 1`,
+      `
+      SELECT * FROM nameserver_history 
+      WHERE domain_id = ? 
+      ORDER BY checked_at DESC 
+      LIMIT 1
+      `,
       [id],
       (historyErr, lastHistory) => {
         if (historyErr) {
@@ -172,17 +187,21 @@ app.post("/api/domains/:id/check", (req, res) => {
         const newText = JSON.stringify(newNameservers);
 
         db.run(
-          `INSERT INTO nameserver_history 
+          `
+          INSERT INTO nameserver_history 
           (domain_id, domain, nameservers) 
-          VALUES (?, ?, ?)`,
+          VALUES (?, ?, ?)
+          `,
           [id, domainRow.domain, newText]
         );
 
         if (oldText !== newText) {
           db.run(
-            `INSERT INTO alerts 
+            `
+            INSERT INTO alerts 
             (domain, old_nameservers, new_nameservers) 
-            VALUES (?, ?, ?)`,
+            VALUES (?, ?, ?)
+            `,
             [domainRow.domain, oldText, newText]
           );
         }
@@ -216,10 +235,12 @@ app.post("/api/check-all", (req, res) => {
 
       const lastHistory = await new Promise((resolve) => {
         db.get(
-          `SELECT * FROM nameserver_history 
-           WHERE domain_id = ? 
-           ORDER BY checked_at DESC 
-           LIMIT 1`,
+          `
+          SELECT * FROM nameserver_history 
+          WHERE domain_id = ? 
+          ORDER BY checked_at DESC 
+          LIMIT 1
+          `,
           [domainRow.id],
           (historyErr, row) => {
             resolve(row);
@@ -236,9 +257,11 @@ app.post("/api/check-all", (req, res) => {
 
       await new Promise((resolve) => {
         db.run(
-          `INSERT INTO nameserver_history 
+          `
+          INSERT INTO nameserver_history 
           (domain_id, domain, nameservers) 
-          VALUES (?, ?, ?)`,
+          VALUES (?, ?, ?)
+          `,
           [domainRow.id, domainRow.domain, newText],
           resolve
         );
@@ -247,9 +270,11 @@ app.post("/api/check-all", (req, res) => {
       if (oldText !== newText) {
         await new Promise((resolve) => {
           db.run(
-            `INSERT INTO alerts 
+            `
+            INSERT INTO alerts 
             (domain, old_nameservers, new_nameservers) 
-            VALUES (?, ?, ?)`,
+            VALUES (?, ?, ?)
+            `,
             [domainRow.domain, oldText, newText],
             resolve
           );
@@ -306,16 +331,20 @@ app.get("/api/stats", (req, res) => {
       return res.status(500).json({ error: "Failed to fetch stats" });
     }
 
-    db.get("SELECT COUNT(*) as totalAlerts FROM alerts", [], (alertErr, alertRow) => {
-      if (alertErr) {
-        return res.status(500).json({ error: "Failed to fetch alerts count" });
-      }
+    db.get(
+      "SELECT COUNT(*) as totalAlerts FROM alerts",
+      [],
+      (alertErr, alertRow) => {
+        if (alertErr) {
+          return res.status(500).json({ error: "Failed to fetch alerts count" });
+        }
 
-      res.json({
-        totalDomains: domainRow.totalDomains,
-        totalAlerts: alertRow.totalAlerts,
-      });
-    });
+        res.json({
+          totalDomains: domainRow.totalDomains,
+          totalAlerts: alertRow.totalAlerts,
+        });
+      }
+    );
   });
 });
 
@@ -324,9 +353,11 @@ app.get("/api/domains/:id/history", (req, res) => {
   const { id } = req.params;
 
   db.all(
-    `SELECT * FROM nameserver_history 
-     WHERE domain_id = ? 
-     ORDER BY checked_at DESC`,
+    `
+    SELECT * FROM nameserver_history 
+    WHERE domain_id = ? 
+    ORDER BY checked_at DESC
+    `,
     [id],
     (err, rows) => {
       if (err) {
@@ -343,6 +374,6 @@ app.get("/api/domains/:id/history", (req, res) => {
   );
 });
 
-app.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`Backend running on port ${PORT}`);
 });
