@@ -2,7 +2,6 @@ const express = require("express");
 const cors = require("cors");
 const sqlite3 = require("sqlite3").verbose();
 const dns = require("dns").promises;
-const cron = require("node-cron");
 
 const app = express();
 const PORT = 5001;
@@ -12,12 +11,13 @@ app.use(express.json());
 
 const db = new sqlite3.Database("./domainpulse.db");
 
+// Create tables
 db.serialize(() => {
   db.run(`
     CREATE TABLE IF NOT EXISTS domains (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       domain TEXT UNIQUE NOT NULL,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -25,325 +25,322 @@ db.serialize(() => {
     CREATE TABLE IF NOT EXISTS nameserver_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       domain_id INTEGER NOT NULL,
+      domain TEXT NOT NULL,
       nameservers TEXT NOT NULL,
-      checked_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      changed INTEGER DEFAULT 0,
-      FOREIGN KEY (domain_id) REFERENCES domains(id)
+      checked_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS alerts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      domain_id INTEGER NOT NULL,
-      alert_type TEXT NOT NULL,
-      message TEXT NOT NULL,
-      old_value TEXT,
-      new_value TEXT,
-      is_read INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (domain_id) REFERENCES domains(id)
+      domain TEXT NOT NULL,
+      old_nameservers TEXT NOT NULL,
+      new_nameservers TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 });
 
+function cleanDomain(domain) {
+  return domain
+    .replace("https://", "")
+    .replace("http://", "")
+    .replace("www.", "")
+    .split("/")[0]
+    .trim()
+    .toLowerCase();
+}
+
 async function getNameservers(domain) {
-  const nameservers = await dns.resolveNs(domain);
-  return nameservers.map((ns) => ns.toLowerCase()).sort();
-}
-
-function getDomainById(id) {
-  return new Promise((resolve, reject) => {
-    db.get(`SELECT * FROM domains WHERE id = ?`, [id], (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
-}
-
-function getLatestHistory(domainId) {
-  return new Promise((resolve, reject) => {
-    db.get(
-      `
-      SELECT * FROM nameserver_history
-      WHERE domain_id = ?
-      ORDER BY id DESC
-      LIMIT 1
-      `,
-      [domainId],
-      (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
-      }
-    );
-  });
-}
-
-function saveHistory(domainId, nameservers, changed) {
-  return new Promise((resolve, reject) => {
-    db.run(
-      `
-      INSERT INTO nameserver_history (domain_id, nameservers, changed)
-      VALUES (?, ?, ?)
-      `,
-      [domainId, JSON.stringify(nameservers), changed ? 1 : 0],
-      function (err) {
-        if (err) reject(err);
-        else resolve(this.lastID);
-      }
-    );
-  });
-}
-
-function createAlert(domainId, message, oldValue, newValue) {
-  return new Promise((resolve, reject) => {
-    db.run(
-      `
-      INSERT INTO alerts (domain_id, alert_type, message, old_value, new_value)
-      VALUES (?, ?, ?, ?, ?)
-      `,
-      [
-        domainId,
-        "NS_CHANGED",
-        message,
-        JSON.stringify(oldValue),
-        JSON.stringify(newValue)
-      ],
-      function (err) {
-        if (err) reject(err);
-        else resolve(this.lastID);
-      }
-    );
-  });
-}
-
-function getAllDomains() {
-  return new Promise((resolve, reject) => {
-    db.all(`SELECT * FROM domains`, [], (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
-}
-
-async function checkAndStoreDomain(domain) {
-  const currentNameservers = await getNameservers(domain.domain);
-  const latestHistory = await getLatestHistory(domain.id);
-
-  let changed = true;
-  let oldNameservers = [];
-
-  if (latestHistory) {
-    oldNameservers = JSON.parse(latestHistory.nameservers);
-
-    changed =
-      JSON.stringify(oldNameservers) !== JSON.stringify(currentNameservers);
+  try {
+    const ns = await dns.resolveNs(domain);
+    return ns.map((item) => item.toLowerCase()).sort();
+  } catch (error) {
+    return [];
   }
-
-  if (changed) {
-    await saveHistory(domain.id, currentNameservers, true);
-
-    await createAlert(
-      domain.id,
-      `${domain.domain} nameservers changed`,
-      oldNameservers,
-      currentNameservers
-    );
-  }
-
-  return {
-    domain: domain.domain,
-    changed,
-    oldNameservers,
-    currentNameservers
-  };
 }
 
+// Home route
 app.get("/", (req, res) => {
   res.json({
-    message: "DomainPulse backend is running"
+    message: "DomainPulse backend is running",
+    routes: [
+      "GET /api/domains",
+      "POST /api/domains",
+      "DELETE /api/domains/:id",
+      "POST /api/domains/:id/check",
+      "POST /api/check-all",
+      "GET /api/alerts",
+      "DELETE /api/alerts",
+      "GET /api/stats",
+    ],
   });
 });
 
-app.post("/api/domains", async (req, res) => {
-  try {
-    const { domain } = req.body;
-
-    if (!domain) {
-      return res.status(400).json({
-        error: "Domain is required"
-      });
-    }
-
-    const cleanDomain = domain.toLowerCase().trim();
-    const nameservers = await getNameservers(cleanDomain);
-
-    db.run(
-      `INSERT INTO domains (domain) VALUES (?)`,
-      [cleanDomain],
-      async function (err) {
-        if (err) {
-          return res.status(400).json({
-            error: "Domain already exists or could not be saved"
-          });
-        }
-
-        const domainId = this.lastID;
-
-        await saveHistory(domainId, nameservers, true);
-
-        res.json({
-          message: "Domain added successfully",
-          id: domainId,
-          domain: cleanDomain,
-          nameservers
-        });
-      }
-    );
-  } catch (error) {
-    res.status(500).json({
-      error: "Could not fetch nameservers",
-      details: error.message
-    });
-  }
-});
-
+// Get all domains
 app.get("/api/domains", (req, res) => {
-  db.all(`SELECT * FROM domains ORDER BY id DESC`, [], (err, rows) => {
+  db.all("SELECT * FROM domains ORDER BY id DESC", [], (err, rows) => {
     if (err) {
-      return res.status(500).json({
-        error: err.message
-      });
+      return res.status(500).json({ error: "Failed to fetch domains" });
     }
 
     res.json(rows);
   });
 });
 
-app.get("/api/domains/:id/history", (req, res) => {
-  db.all(
-    `
-    SELECT * FROM nameserver_history
-    WHERE domain_id = ?
-    ORDER BY id DESC
-    `,
-    [req.params.id],
-    (err, rows) => {
+// Add domain
+app.post("/api/domains", async (req, res) => {
+  const { domain } = req.body;
+
+  if (!domain) {
+    return res.status(400).json({ error: "Domain is required" });
+  }
+
+  const cleanedDomain = cleanDomain(domain);
+  const nameservers = await getNameservers(cleanedDomain);
+
+  db.run(
+    "INSERT INTO domains (domain) VALUES (?)",
+    [cleanedDomain],
+    function (err) {
       if (err) {
-        return res.status(500).json({
-          error: err.message
+        return res.status(400).json({
+          error: "Domain already exists or invalid domain",
         });
       }
 
-      const formattedRows = rows.map((row) => ({
-        ...row,
-        nameservers: JSON.parse(row.nameservers),
-        changed: Boolean(row.changed)
-      }));
+      const domainId = this.lastID;
 
-      res.json(formattedRows);
+      db.run(
+        `INSERT INTO nameserver_history 
+        (domain_id, domain, nameservers) 
+        VALUES (?, ?, ?)`,
+        [domainId, cleanedDomain, JSON.stringify(nameservers)]
+      );
+
+      res.json({
+        message: "Domain added successfully",
+        id: domainId,
+        domain: cleanedDomain,
+        nameservers,
+      });
     }
   );
 });
 
-app.post("/api/domains/:id/check", async (req, res) => {
-  try {
-    const domain = await getDomainById(req.params.id);
+// Delete domain
+app.delete("/api/domains/:id", (req, res) => {
+  const { id } = req.params;
 
-    if (!domain) {
-      return res.status(404).json({
-        error: "Domain not found"
+  db.run("DELETE FROM domains WHERE id = ?", [id], function (err) {
+    if (err) {
+      return res.status(500).json({ error: "Failed to delete domain" });
+    }
+
+    res.json({ message: "Domain deleted successfully" });
+  });
+});
+
+// Check one domain
+app.post("/api/domains/:id/check", (req, res) => {
+  const { id } = req.params;
+
+  db.get("SELECT * FROM domains WHERE id = ?", [id], async (err, domainRow) => {
+    if (err || !domainRow) {
+      return res.status(404).json({ error: "Domain not found" });
+    }
+
+    const newNameservers = await getNameservers(domainRow.domain);
+
+    db.get(
+      `SELECT * FROM nameserver_history 
+       WHERE domain_id = ? 
+       ORDER BY checked_at DESC 
+       LIMIT 1`,
+      [id],
+      (historyErr, lastHistory) => {
+        if (historyErr) {
+          return res.status(500).json({ error: "Failed to check history" });
+        }
+
+        const oldNameservers = lastHistory
+          ? JSON.parse(lastHistory.nameservers)
+          : [];
+
+        const oldText = JSON.stringify(oldNameservers);
+        const newText = JSON.stringify(newNameservers);
+
+        db.run(
+          `INSERT INTO nameserver_history 
+          (domain_id, domain, nameservers) 
+          VALUES (?, ?, ?)`,
+          [id, domainRow.domain, newText]
+        );
+
+        if (oldText !== newText) {
+          db.run(
+            `INSERT INTO alerts 
+            (domain, old_nameservers, new_nameservers) 
+            VALUES (?, ?, ?)`,
+            [domainRow.domain, oldText, newText]
+          );
+        }
+
+        res.json({
+          message:
+            oldText !== newText
+              ? "Nameserver changed"
+              : "No nameserver change",
+          domain: domainRow.domain,
+          oldNameservers,
+          newNameservers,
+          changed: oldText !== newText,
+        });
+      }
+    );
+  });
+});
+
+// Check all domains
+app.post("/api/check-all", (req, res) => {
+  db.all("SELECT * FROM domains", [], async (err, domains) => {
+    if (err) {
+      return res.status(500).json({ error: "Failed to fetch domains" });
+    }
+
+    const results = [];
+
+    for (const domainRow of domains) {
+      const newNameservers = await getNameservers(domainRow.domain);
+
+      const lastHistory = await new Promise((resolve) => {
+        db.get(
+          `SELECT * FROM nameserver_history 
+           WHERE domain_id = ? 
+           ORDER BY checked_at DESC 
+           LIMIT 1`,
+          [domainRow.id],
+          (historyErr, row) => {
+            resolve(row);
+          }
+        );
+      });
+
+      const oldNameservers = lastHistory
+        ? JSON.parse(lastHistory.nameservers)
+        : [];
+
+      const oldText = JSON.stringify(oldNameservers);
+      const newText = JSON.stringify(newNameservers);
+
+      await new Promise((resolve) => {
+        db.run(
+          `INSERT INTO nameserver_history 
+          (domain_id, domain, nameservers) 
+          VALUES (?, ?, ?)`,
+          [domainRow.id, domainRow.domain, newText],
+          resolve
+        );
+      });
+
+      if (oldText !== newText) {
+        await new Promise((resolve) => {
+          db.run(
+            `INSERT INTO alerts 
+            (domain, old_nameservers, new_nameservers) 
+            VALUES (?, ?, ?)`,
+            [domainRow.domain, oldText, newText],
+            resolve
+          );
+        });
+      }
+
+      results.push({
+        domain: domainRow.domain,
+        changed: oldText !== newText,
+        oldNameservers,
+        newNameservers,
       });
     }
 
-    const result = await checkAndStoreDomain(domain);
-
     res.json({
-      message: result.changed
-        ? "Nameservers changed. New history and alert saved."
-        : "No nameserver change detected.",
-      ...result
+      message: "All domains checked",
+      results,
     });
-  } catch (error) {
-    res.status(500).json({
-      error: "Could not check domain",
-      details: error.message
-    });
-  }
+  });
 });
 
+// Get alerts
 app.get("/api/alerts", (req, res) => {
-  db.all(
-    `
-    SELECT alerts.*, domains.domain
-    FROM alerts
-    JOIN domains ON alerts.domain_id = domains.id
-    ORDER BY alerts.id DESC
-    `,
-    [],
-    (err, rows) => {
-      if (err) {
-        return res.status(500).json({
-          error: err.message
-        });
-      }
-
-      const formattedRows = rows.map((row) => ({
-        ...row,
-        old_value: row.old_value ? JSON.parse(row.old_value) : [],
-        new_value: row.new_value ? JSON.parse(row.new_value) : [],
-        is_read: Boolean(row.is_read)
-      }));
-
-      res.json(formattedRows);
+  db.all("SELECT * FROM alerts ORDER BY id DESC", [], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: "Failed to fetch alerts" });
     }
-  );
+
+    const alerts = rows.map((alert) => ({
+      ...alert,
+      old_nameservers: JSON.parse(alert.old_nameservers),
+      new_nameservers: JSON.parse(alert.new_nameservers),
+    }));
+
+    res.json(alerts);
+  });
 });
 
-app.delete("/api/domains/:id", (req, res) => {
-  const domainId = req.params.id;
+// Clear alerts
+app.delete("/api/alerts", (req, res) => {
+  db.run("DELETE FROM alerts", [], function (err) {
+    if (err) {
+      return res.status(500).json({ error: "Failed to clear alerts" });
+    }
 
-  db.serialize(() => {
-    db.run(`DELETE FROM nameserver_history WHERE domain_id = ?`, [domainId]);
-    db.run(`DELETE FROM alerts WHERE domain_id = ?`, [domainId]);
-    db.run(`DELETE FROM domains WHERE id = ?`, [domainId], function (err) {
-      if (err) {
-        return res.status(500).json({
-          error: err.message
-        });
+    res.json({ message: "Alerts cleared successfully" });
+  });
+});
+
+// Stats
+app.get("/api/stats", (req, res) => {
+  db.get("SELECT COUNT(*) as totalDomains FROM domains", [], (err, domainRow) => {
+    if (err) {
+      return res.status(500).json({ error: "Failed to fetch stats" });
+    }
+
+    db.get("SELECT COUNT(*) as totalAlerts FROM alerts", [], (alertErr, alertRow) => {
+      if (alertErr) {
+        return res.status(500).json({ error: "Failed to fetch alerts count" });
       }
 
       res.json({
-        message: "Domain deleted successfully"
+        totalDomains: domainRow.totalDomains,
+        totalAlerts: alertRow.totalAlerts,
       });
     });
   });
 });
 
-// Auto-check every 1 minute for testing.
-// Later change "*/1 * * * *" to "0 9 * * *" for daily 9 AM.
-cron.schedule("*/1 * * * *", async () => {
-  console.log("Running automatic domain check...");
+// Get nameserver history for one domain
+app.get("/api/domains/:id/history", (req, res) => {
+  const { id } = req.params;
 
-  try {
-    const domains = await getAllDomains();
-
-    for (const domain of domains) {
-      try {
-        const result = await checkAndStoreDomain(domain);
-
-        console.log(
-          `${result.domain}: ${
-            result.changed ? "Nameserver changed" : "No change"
-          }`
-        );
-      } catch (error) {
-        console.log(`Failed to check ${domain.domain}: ${error.message}`);
+  db.all(
+    `SELECT * FROM nameserver_history 
+     WHERE domain_id = ? 
+     ORDER BY checked_at DESC`,
+    [id],
+    (err, rows) => {
+      if (err) {
+        return res.status(500).json({ error: "Failed to fetch history" });
       }
+
+      const history = rows.map((row) => ({
+        ...row,
+        nameservers: JSON.parse(row.nameservers),
+      }));
+
+      res.json(history);
     }
-  } catch (error) {
-    console.log("Automatic check failed:", error.message);
-  }
+  );
 });
 
 app.listen(PORT, () => {
