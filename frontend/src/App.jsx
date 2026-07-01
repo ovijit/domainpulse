@@ -1,345 +1,264 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import "./App.css";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5001";
+const API_URL = "http://localhost:5001";
 
 function App() {
+  const [domain, setDomain] = useState("");
   const [domains, setDomains] = useState([]);
-  const [domainInput, setDomainInput] = useState("");
-  const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [checkingId, setCheckingId] = useState(null);
-  const [historyModal, setHistoryModal] = useState(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [lastCheck, setLastCheck] = useState("Not checked yet");
+  const [backendStatus, setBackendStatus] = useState("checking");
+
+  async function fetchDomains() {
+    try {
+      const res = await fetch(`${API_URL}/api/domains`);
+      const data = await res.json();
+
+      setDomains(Array.isArray(data) ? data : []);
+      setBackendStatus("running");
+    } catch (error) {
+      setBackendStatus("offline");
+    }
+  }
 
   useEffect(() => {
     fetchDomains();
   }, []);
 
-  async function fetchDomains() {
-    try {
-      setLoading(true);
-
-      const res = await fetch(`${API_URL}/api/domains`);
-      const data = await res.json();
-
-      setDomains(Array.isArray(data) ? data : []);
-    } catch (error) {
-      setMessage("Backend is not running. Start backend on port 5001.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function addDomain(e) {
     e.preventDefault();
 
-    const cleanDomain = domainInput.trim().toLowerCase();
-
-    if (!cleanDomain) {
-      setMessage("Please enter a domain name.");
-      return;
-    }
+    if (!domain.trim()) return;
 
     try {
-      setLoading(true);
-      setMessage("");
-
       const res = await fetch(`${API_URL}/api/domains`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ domain: cleanDomain }),
+        body: JSON.stringify({ domain }),
       });
 
-      const data = await res.json();
-
       if (!res.ok) {
-        setMessage(data.error || data.message || "Could not add domain.");
+        alert("Could not add domain");
         return;
       }
 
-      setDomainInput("");
-      setMessage(data.message || "Domain added successfully.");
+      setDomain("");
       fetchDomains();
     } catch (error) {
-      setMessage("Could not connect to backend.");
-    } finally {
-      setLoading(false);
+      alert("Backend is not running. Start backend on port 5001.");
     }
   }
-
-  async function checkDomain(domainItem) {
-    try {
-      setCheckingId(domainItem.id);
-      setMessage("");
-
-      const res = await fetch(`${API_URL}/api/domains/${domainItem.id}/check`, {
-        method: "POST",
-      });
-
-      if (!res.ok) {
-        setMessage("Check endpoint is not connected yet in backend.");
-        return;
-      }
-
-      const data = await res.json();
-
-      setLastCheck("Just now");
-      setMessage(data.message || `${domainItem.domain} checked successfully.`);
-      fetchDomains();
-    } catch (error) {
-      setMessage("Could not check domain. Backend endpoint may be missing.");
-    } finally {
-      setCheckingId(null);
-    }
-  }
-
-  async function viewHistory(domainItem) {
-    try {
-      setHistoryLoading(true);
-      setHistoryModal({
-        domain: domainItem.domain,
-        records: [],
-      });
-
-      const res = await fetch(`${API_URL}/api/domains/${domainItem.id}/history`);
-
-      if (!res.ok) {
-        setHistoryModal({
-          domain: domainItem.domain,
-          records: [],
-          error: "History endpoint is not connected yet in backend.",
-        });
-        return;
-      }
-
-      const data = await res.json();
-
-      setHistoryModal({
-        domain: domainItem.domain,
-        records: Array.isArray(data) ? data : data.history || [],
-      });
-    } catch (error) {
-      setHistoryModal({
-        domain: domainItem.domain,
-        records: [],
-        error: "Could not load history.",
-      });
-    } finally {
-      setHistoryLoading(false);
-    }
-  }
-
-  function formatDate(dateValue) {
-    if (!dateValue) return "Unknown";
-
-    return String(dateValue).replace("T", " ").slice(0, 19);
-  }
-
-  const stats = useMemo(() => {
-    return [
-      {
-        label: "Domains Monitored",
-        value: domains.length,
-        helper: "Active portfolio",
-        icon: "◎",
-        tone: "blue",
-      },
-      {
-        label: "Changes Detected",
-        value: 0,
-        helper: "Last 24 hours",
-        icon: "✓",
-        tone: "green",
-      },
-      {
-        label: "Checks Run Today",
-        value: domains.length,
-        helper: "Across all domains",
-        icon: "↻",
-        tone: "purple",
-      },
-      {
-        label: "Last Check",
-        value: lastCheck,
-        helper: "All domains are healthy",
-        icon: "◷",
-        tone: "orange",
-      },
-    ];
-  }, [domains, lastCheck]);
 
   return (
     <div className="app">
-      <header className="topbar">
+      <aside className="sidebar">
         <div className="brand">
           <div className="logo">∿</div>
-
-          <div>
-            <h1>DomainPulse</h1>
-            <p>Monitor nameserver changes for your domain portfolio.</p>
-          </div>
+          <h2>DomainPulse</h2>
         </div>
 
         <nav className="nav">
-          <button className="nav-btn active">Dashboard</button>
-          <button className="nav-btn">History</button>
-          <button className="nav-btn">Settings</button>
+          <a className="active">⌂ Dashboard</a>
+          <a>◎ Domains</a>
+          <a>♢ Alerts <span>3</span></a>
+          <a>◴ History</a>
+          <a>▥ Reports</a>
+          <a>⚙ Settings</a>
         </nav>
-      </header>
 
-      <main className="dashboard">
-        <section className="stats-grid">
-          {stats.map((stat) => (
-            <div className="stat-card" key={stat.label}>
-              <div className={`stat-icon ${stat.tone}`}>{stat.icon}</div>
-
-              <div>
-                <p className="stat-label">{stat.label}</p>
-                <h2>{stat.value}</h2>
-                <p className="stat-helper">{stat.helper}</p>
-              </div>
-            </div>
-          ))}
-        </section>
-
-        <section className="panel add-panel">
-          <div className="section-title">
-            <span className="section-icon">◎</span>
-            <div>
-              <h2>Add Domain</h2>
-              <p>Start monitoring a new domain for nameserver changes.</p>
-            </div>
+        <div className="plan-card">
+          <p className="small-title">Pro Plan</p>
+          <h3>{domains.length} / 1,000 domains</h3>
+          <div className="progress">
+            <div style={{ width: `${Math.min(domains.length, 100)}%` }}></div>
           </div>
-
-          <form className="add-form" onSubmit={addDomain}>
-            <input
-              type="text"
-              placeholder="example.com"
-              value={domainInput}
-              onChange={(e) => setDomainInput(e.target.value)}
-            />
-
-            <button disabled={loading}>
-              <span>＋</span>
-              {loading ? "Saving..." : "Add Domain"}
-            </button>
-          </form>
-        </section>
-
-        {message && <div className="message">{message}</div>}
-
-        <section className="panel domains-panel">
-          <div className="domains-header">
-            <div className="section-title">
-              <span className="section-icon">▱</span>
-              <div>
-                <h2>Saved Domains</h2>
-                <p>Your monitored domains and their status.</p>
-              </div>
-            </div>
-
-            <select>
-              <option>Recently Added</option>
-              <option>Oldest First</option>
-              <option>A to Z</option>
-            </select>
-          </div>
-
-          {loading && domains.length === 0 ? (
-            <div className="empty-state">Loading domains...</div>
-          ) : domains.length === 0 ? (
-            <div className="empty-state">
-              <h3>No domains yet</h3>
-              <p>Add your first domain to start monitoring nameservers.</p>
-            </div>
-          ) : (
-            <div className="domain-list">
-              {domains.map((item) => (
-                <div className="domain-row" key={item.id}>
-                  <div className="domain-main">
-                    <div className="domain-icon">◎</div>
-
-                    <div>
-                      <h3>{item.domain}</h3>
-                      <span className="status">
-                        <span></span>
-                        Active
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="domain-date">
-                    <span>Added</span>
-                    <strong>{formatDate(item.created_at)}</strong>
-                  </div>
-
-                  <div className="domain-actions">
-                    <button
-                      className="outline-btn"
-                      onClick={() => viewHistory(item)}
-                    >
-                      View History
-                    </button>
-
-                    <button
-                      className="solid-btn"
-                      onClick={() => checkDomain(item)}
-                      disabled={checkingId === item.id}
-                    >
-                      {checkingId === item.id ? "Checking..." : "Check Now"}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <footer className="footer">
-          DomainPulse is actively monitoring your domains 24/7
-        </footer>
-      </main>
-
-      {historyModal && (
-        <div className="modal-backdrop" onClick={() => setHistoryModal(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <h2>{historyModal.domain}</h2>
-                <p>Nameserver history</p>
-              </div>
-
-              <button onClick={() => setHistoryModal(null)}>×</button>
-            </div>
-
-            {historyLoading ? (
-              <p className="modal-message">Loading history...</p>
-            ) : historyModal.error ? (
-              <p className="modal-message">{historyModal.error}</p>
-            ) : historyModal.records.length === 0 ? (
-              <p className="modal-message">No history found yet.</p>
-            ) : (
-              <div className="history-list">
-                {historyModal.records.map((record, index) => (
-                  <div className="history-item" key={index}>
-                    <strong>{formatDate(record.checked_at || record.created_at)}</strong>
-                    <p>
-                      Old: {record.old_nameservers || "Unknown"}
-                    </p>
-                    <p>
-                      New: {record.new_nameservers || "Unknown"}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <button>Upgrade Plan</button>
         </div>
-      )}
+
+        <div className="help-card">
+          <h4>Need help?</h4>
+          <p>View documentation or contact support.</p>
+          <button>Visit Help Center →</button>
+        </div>
+      </aside>
+
+      <main className="main">
+        <header className="topbar">
+          <div>
+            <h1>Dashboard</h1>
+            <p>Monitor nameserver changes across your domain portfolio.</p>
+          </div>
+
+          <div className="top-actions">
+            <input placeholder="Search domains..." />
+            <button className="primary-btn">+ Add Domain</button>
+          </div>
+        </header>
+
+        <section className="stats-grid">
+          <StatCard
+            icon="◎"
+            title="Domains Monitored"
+            value={domains.length}
+            subtitle="Active portfolio"
+          />
+          <StatCard
+            icon="✓"
+            title="Changes Detected"
+            value="0"
+            subtitle="Last 24 hours"
+          />
+          <StatCard
+            icon="↻"
+            title="Checks Run Today"
+            value="0"
+            subtitle="Across all domains"
+          />
+          <StatCard
+            icon="◴"
+            title="Last Check"
+            value={domains.length ? "Just now" : "Not yet"}
+            subtitle="All domains are healthy"
+          />
+        </section>
+
+        <div
+          className={
+            backendStatus === "running"
+              ? "status-banner success"
+              : "status-banner warning"
+          }
+        >
+          <div className="shield">◇</div>
+          <div>
+            <h4>
+              {backendStatus === "running"
+                ? "Backend is running on port 5001"
+                : "Backend is not running"}
+            </h4>
+            <p>
+              {backendStatus === "running"
+                ? "Everything looks good. We are monitoring your domains."
+                : "Start your backend server before adding or loading domains."}
+            </p>
+          </div>
+          <button>View System Status →</button>
+        </div>
+
+        <section className="content-grid">
+          <div className="table-card">
+            <div className="card-header">
+              <div>
+                <h2>Domain Monitoring</h2>
+                <p>{domains.length} domains</p>
+              </div>
+
+              <div className="filters">
+                <select>
+                  <option>All Status</option>
+                  <option>Healthy</option>
+                  <option>Changed</option>
+                </select>
+                <input placeholder="Search domains..." />
+              </div>
+            </div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>Domain</th>
+                  <th>Nameserver Status</th>
+                  <th>Last Checked</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {domains.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="empty">
+                      No domains added yet.
+                    </td>
+                  </tr>
+                ) : (
+                  domains.map((item) => (
+                    <tr key={item.id}>
+                      <td>
+                        <strong>◎ {item.domain}</strong>
+                      </td>
+                      <td className="healthy-text">✓ No changes</td>
+                      <td>Just now</td>
+                      <td>
+                        <span className="badge healthy">Healthy</span>
+                      </td>
+                      <td>
+                        <button className="icon-btn">▥</button>
+                        <button className="icon-btn">⋮</button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <aside className="right-panel">
+            <div className="alerts-card">
+              <div className="card-header small">
+                <h3>Recent Alerts</h3>
+                <a>View all</a>
+              </div>
+
+              <Alert domain="example.com" text="No recent changes" time="Now" />
+              <Alert domain="kinetum.com" text="Back to healthy" time="1 hr ago" />
+              <Alert domain="brandly.co" text="No changes detected" time="3 hr ago" />
+            </div>
+
+            <form className="add-card" onSubmit={addDomain}>
+              <div className="add-icon">◎</div>
+              <h3>Add New Domain</h3>
+              <p>Start monitoring a domain for nameserver changes.</p>
+
+              <input
+                value={domain}
+                onChange={(e) => setDomain(e.target.value)}
+                placeholder="Enter domain e.g. example.com"
+              />
+
+              <button type="submit">Add Domain →</button>
+            </form>
+          </aside>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function StatCard({ icon, title, value, subtitle }) {
+  return (
+    <div className="stat-card">
+      <div className="stat-icon">{icon}</div>
+      <div>
+        <p>{title}</p>
+        <h2>{value}</h2>
+        <span>{subtitle}</span>
+      </div>
+      <div className="sparkline"></div>
+    </div>
+  );
+}
+
+function Alert({ domain, text, time }) {
+  return (
+    <div className="alert-item">
+      <div className="dot"></div>
+      <div>
+        <strong>{domain}</strong>
+        <p>{text}</p>
+      </div>
+      <span>{time}</span>
     </div>
   );
 }
