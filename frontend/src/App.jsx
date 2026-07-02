@@ -1,33 +1,63 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 
-const API_URL = "http://localhost:5001";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5001";
 
 function App() {
-  const [domain, setDomain] = useState("");
   const [domains, setDomains] = useState([]);
-  const [backendStatus, setBackendStatus] = useState("checking");
+  const [alerts, setAlerts] = useState([]);
+  const [domainInput, setDomainInput] = useState("");
+  const [backendOnline, setBackendOnline] = useState(false);
 
-  async function fetchDomains() {
+  async function loadData() {
     try {
-      const res = await fetch(`${API_URL}/api/domains`);
-      const data = await res.json();
+      const domainRes = await fetch(`${API_URL}/api/domains`);
+      const alertRes = await fetch(`${API_URL}/api/alerts`);
 
-      setDomains(Array.isArray(data) ? data : []);
-      setBackendStatus("running");
+      if (!domainRes.ok || !alertRes.ok) {
+        throw new Error("Backend error");
+      }
+
+      const domainData = await domainRes.json();
+      const alertData = await alertRes.json();
+
+      setDomains(domainData);
+      setAlerts(alertData);
+      setBackendOnline(true);
     } catch (error) {
-      setBackendStatus("offline");
+      setBackendOnline(false);
+      setDomains([]);
+      setAlerts([
+        {
+          id: 1,
+          domain: "example.com",
+          message: "Backend is not connected",
+          time: "Now",
+        },
+        {
+          id: 2,
+          domain: "kinetum.com",
+          message: "Connect deployed backend",
+          time: "1 hr ago",
+        },
+        {
+          id: 3,
+          domain: "brandly.co",
+          message: "Demo alert",
+          time: "3 hr ago",
+        },
+      ]);
     }
   }
 
   useEffect(() => {
-    fetchDomains();
+    loadData();
   }, []);
 
   async function addDomain(e) {
     e.preventDefault();
 
-    if (!domain.trim()) return;
+    if (!domainInput.trim()) return;
 
     try {
       const res = await fetch(`${API_URL}/api/domains`, {
@@ -35,18 +65,17 @@ function App() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ domain }),
+        body: JSON.stringify({ domain: domainInput }),
       });
 
       if (!res.ok) {
-        alert("Could not add domain");
-        return;
+        throw new Error("Could not add domain");
       }
 
-      setDomain("");
-      fetchDomains();
+      setDomainInput("");
+      loadData();
     } catch (error) {
-      alert("Backend is not running. Start backend on port 5001.");
+      alert("Backend is not running. Start backend or deploy backend first.");
     }
   }
 
@@ -54,103 +83,94 @@ function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <div className="logo">∿</div>
-          <h2>DomainPulse</h2>
+          <div className="brandLogo">⌁</div>
+          <h1>DomainPulse</h1>
         </div>
 
         <nav className="nav">
-          <a className="active">⌂ Dashboard</a>
-          <a>◎ Domains</a>
-          <a>♢ Alerts <span>3</span></a>
-          <a>◴ History</a>
-          <a>▥ Reports</a>
-          <a>⚙ Settings</a>
+          <button className="navItem active">⌂ Dashboard</button>
+          <button className="navItem">◎ Domains</button>
+          <button className="navItem">
+            ◇ Alerts <span>{alerts.length}</span>
+          </button>
+          <button className="navItem">◴ History</button>
+          <button className="navItem">▥ Reports</button>
+          <button className="navItem">⚙ Settings</button>
         </nav>
 
-        <div className="plan-card">
-          <p className="small-title">Pro Plan</p>
-          <h3>{domains.length} / 1,000 domains</h3>
+        <div className="planCard">
+          <h3>Pro Plan</h3>
+          <p>{domains.length} / 1,000 domains</p>
           <div className="progress">
-            <div style={{ width: `${Math.min(domains.length, 100)}%` }}></div>
+            <div style={{ width: `${Math.min(domains.length / 10, 100)}%` }} />
           </div>
           <button>Upgrade Plan</button>
         </div>
 
-        <div className="help-card">
-          <h4>Need help?</h4>
+        <div className="helpCard">
+          <h3>Need help?</h3>
           <p>View documentation or contact support.</p>
-          <button>Visit Help Center →</button>
         </div>
       </aside>
 
       <main className="main">
         <header className="topbar">
           <div>
-            <h1>Dashboard</h1>
-            <p>Monitor nameserver changes across your domain portfolio.</p>
+            <p className="eyebrow">Domain Monitoring Dashboard</p>
+            <h2>Monitor nameserver changes easily</h2>
           </div>
 
-          <div className="top-actions">
-            <input placeholder="Search domains..." />
-            <button className="primary-btn">+ Add Domain</button>
+          <div className={backendOnline ? "status online" : "status offline"}>
+            <span></span>
+            {backendOnline ? "Backend online" : "Backend offline"}
           </div>
         </header>
 
-        <section className="stats-grid">
-          <StatCard
-            icon="◎"
-            title="Domains Monitored"
-            value={domains.length}
-            subtitle="Active portfolio"
-          />
-          <StatCard
-            icon="✓"
-            title="Changes Detected"
-            value="0"
-            subtitle="Last 24 hours"
-          />
-          <StatCard
-            icon="↻"
-            title="Checks Run Today"
-            value="0"
-            subtitle="Across all domains"
-          />
-          <StatCard
-            icon="◴"
-            title="Last Check"
-            value={domains.length ? "Just now" : "Not yet"}
-            subtitle="All domains are healthy"
-          />
+        <section className="stats">
+          <div className="statCard">
+            <p>Total Domains</p>
+            <h3>{domains.length}</h3>
+            <span>Active portfolio</span>
+          </div>
+
+          <div className="statCard">
+            <p>Recent Alerts</p>
+            <h3>{alerts.length}</h3>
+            <span>Last 24 hours</span>
+          </div>
+
+          <div className="statCard">
+            <p>Changes Found</p>
+            <h3>0</h3>
+            <span>Across all domains</span>
+          </div>
+
+          <div className="statCard">
+            <p>Healthy Domains</p>
+            <h3>{domains.length}</h3>
+            <span>All domains healthy</span>
+          </div>
         </section>
 
-        <div
-          className={
-            backendStatus === "running"
-              ? "status-banner success"
-              : "status-banner warning"
-          }
-        >
-          <div className="shield">◇</div>
-          <div>
-            <h4>
-              {backendStatus === "running"
-                ? "Backend is running on port 5001"
-                : "Backend is not running"}
-            </h4>
-            <p>
-              {backendStatus === "running"
-                ? "Everything looks good. We are monitoring your domains."
-                : "Start your backend server before adding or loading domains."}
-            </p>
-          </div>
-          <button>View System Status →</button>
-        </div>
+        {!backendOnline && (
+          <section className="warning">
+            <div className="warningIcon">◇</div>
+            <div>
+              <h3>Backend is not running</h3>
+              <p>
+                Your frontend is live, but it cannot connect to your backend API.
+                Deploy backend and add the backend URL in Vercel.
+              </p>
+            </div>
+            <button>View System Status →</button>
+          </section>
+        )}
 
-        <section className="content-grid">
-          <div className="table-card">
-            <div className="card-header">
+        <section className="contentGrid">
+          <div className="panel large">
+            <div className="panelHeader">
               <div>
-                <h2>Domain Monitoring</h2>
+                <h3>Domain Monitoring</h3>
                 <p>{domains.length} domains</p>
               </div>
 
@@ -160,105 +180,75 @@ function App() {
                   <option>Healthy</option>
                   <option>Changed</option>
                 </select>
+
                 <input placeholder="Search domains..." />
               </div>
             </div>
 
-            <table>
-              <thead>
-                <tr>
-                  <th>Domain</th>
-                  <th>Nameserver Status</th>
-                  <th>Last Checked</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {domains.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="empty">
-                      No domains added yet.
-                    </td>
-                  </tr>
-                ) : (
-                  domains.map((item) => (
-                    <tr key={item.id}>
-                      <td>
-                        <strong>◎ {item.domain}</strong>
-                      </td>
-                      <td className="healthy-text">✓ No changes</td>
-                      <td>Just now</td>
-                      <td>
-                        <span className="badge healthy">Healthy</span>
-                      </td>
-                      <td>
-                        <button className="icon-btn">▥</button>
-                        <button className="icon-btn">⋮</button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <aside className="right-panel">
-            <div className="alerts-card">
-              <div className="card-header small">
-                <h3>Recent Alerts</h3>
-                <a>View all</a>
+            <div className="table">
+              <div className="tableHead">
+                <span>Domain</span>
+                <span>Nameserver Status</span>
+                <span>Last Checked</span>
+                <span>Status</span>
               </div>
 
-              <Alert domain="example.com" text="No recent changes" time="Now" />
-              <Alert domain="kinetum.com" text="Back to healthy" time="1 hr ago" />
-              <Alert domain="brandly.co" text="No changes detected" time="3 hr ago" />
+              {domains.length === 0 ? (
+                <div className="emptyState">
+                  <h4>No domains added yet.</h4>
+                  <p>Add your first domain to start monitoring nameservers.</p>
+                </div>
+              ) : (
+                domains.map((item) => (
+                  <div className="tableRow" key={item.id}>
+                    <span>{item.domain}</span>
+                    <span>Stable</span>
+                    <span>Just now</span>
+                    <span className="badge healthy">Healthy</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="sideColumn">
+            <div className="panel">
+              <div className="panelHeader">
+                <h3>Recent Alerts</h3>
+                <button className="linkBtn">View all</button>
+              </div>
+
+              <div className="alertList">
+                {alerts.map((alert) => (
+                  <div className="alertItem" key={alert.id}>
+                    <div className="dot"></div>
+                    <div>
+                      <h4>{alert.domain}</h4>
+                      <p>{alert.message || "No recent changes"}</p>
+                    </div>
+                    <span>{alert.time || "Now"}</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <form className="add-card" onSubmit={addDomain}>
-              <div className="add-icon">◎</div>
+            <div className="panel addPanel">
+              <div className="addIcon">◎</div>
               <h3>Add New Domain</h3>
               <p>Start monitoring a domain for nameserver changes.</p>
 
-              <input
-                value={domain}
-                onChange={(e) => setDomain(e.target.value)}
-                placeholder="Enter domain e.g. example.com"
-              />
-
-              <button type="submit">Add Domain →</button>
-            </form>
-          </aside>
+              <form onSubmit={addDomain}>
+                <input
+                  value={domainInput}
+                  onChange={(e) => setDomainInput(e.target.value)}
+                  placeholder="example.com"
+                />
+                <button type="submit">Add Domain</button>
+              </form>
+            </div>
+          </div>
         </section>
       </main>
-    </div>
-  );
-}
-
-function StatCard({ icon, title, value, subtitle }) {
-  return (
-    <div className="stat-card">
-      <div className="stat-icon">{icon}</div>
-      <div>
-        <p>{title}</p>
-        <h2>{value}</h2>
-        <span>{subtitle}</span>
-      </div>
-      <div className="sparkline"></div>
-    </div>
-  );
-}
-
-function Alert({ domain, text, time }) {
-  return (
-    <div className="alert-item">
-      <div className="dot"></div>
-      <div>
-        <strong>{domain}</strong>
-        <p>{text}</p>
-      </div>
-      <span>{time}</span>
     </div>
   );
 }
