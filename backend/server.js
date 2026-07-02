@@ -13,6 +13,7 @@ app.use(express.json());
 const dataDir = path.join(__dirname, "data");
 const domainsFile = path.join(dataDir, "domains.json");
 const alertsFile = path.join(dataDir, "alerts.json");
+const historyFile = path.join(dataDir, "ns-history.json");
 
 function ensureFiles() {
   if (!fs.existsSync(dataDir)) {
@@ -25,6 +26,10 @@ function ensureFiles() {
 
   if (!fs.existsSync(alertsFile)) {
     fs.writeFileSync(alertsFile, "[]");
+  }
+
+  if (!fs.existsSync(historyFile)) {
+    fs.writeFileSync(historyFile, "[]");
   }
 }
 
@@ -82,6 +87,7 @@ app.post("/api/domains", async (req, res) => {
     }
 
     const domains = readJson(domainsFile);
+    const history = readJson(historyFile);
 
     const existingDomain = domains.find((item) => item.domain === domain);
 
@@ -103,7 +109,17 @@ app.post("/api/domains", async (req, res) => {
     };
 
     domains.push(newDomain);
+
+    history.unshift({
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      domain,
+      type: "INITIAL_NS",
+      nameservers,
+      createdAt: new Date().toISOString(),
+    });
+
     writeJson(domainsFile, domains);
+    writeJson(historyFile, history);
 
     res.status(201).json({
       message: "Domain added successfully",
@@ -123,6 +139,7 @@ app.post("/api/check/:domain", async (req, res) => {
 
     const domains = readJson(domainsFile);
     const alerts = readJson(alertsFile);
+    const history = readJson(historyFile);
 
     const domain = domains.find((item) => item.domain === domainName);
 
@@ -146,16 +163,28 @@ app.post("/api/check/:domain", async (req, res) => {
         createdAt: new Date().toISOString(),
       };
 
+      const historyItem = {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        domain: domainName,
+        type: "NS_CHANGE",
+        oldNameservers,
+        newNameservers,
+        createdAt: new Date().toISOString(),
+      };
+
       alerts.unshift(alert);
+      history.unshift(historyItem);
       domain.nameservers = newNameservers;
 
       writeJson(alertsFile, alerts);
       writeJson(domainsFile, domains);
+      writeJson(historyFile, history);
 
       return res.json({
         changed: true,
         message: "Nameserver change detected",
         alert,
+        history: historyItem,
       });
     }
 
@@ -177,6 +206,7 @@ app.post("/api/check/:domain", async (req, res) => {
 app.post("/api/check-all", async (req, res) => {
   const domains = readJson(domainsFile);
   const alerts = readJson(alertsFile);
+  const history = readJson(historyFile);
 
   const results = [];
 
@@ -198,13 +228,24 @@ app.post("/api/check-all", async (req, res) => {
           createdAt: new Date().toISOString(),
         };
 
+        const historyItem = {
+          id: Date.now() + Math.floor(Math.random() * 1000),
+          domain: domain.domain,
+          type: "NS_CHANGE",
+          oldNameservers,
+          newNameservers,
+          createdAt: new Date().toISOString(),
+        };
+
         alerts.unshift(alert);
+        history.unshift(historyItem);
         domain.nameservers = newNameservers;
 
         results.push({
           domain: domain.domain,
           changed: true,
           alert,
+          history: historyItem,
         });
       } else {
         results.push({
@@ -223,6 +264,7 @@ app.post("/api/check-all", async (req, res) => {
 
   writeJson(domainsFile, domains);
   writeJson(alertsFile, alerts);
+  writeJson(historyFile, history);
 
   res.json({
     message: "All domains checked",
@@ -233,6 +275,23 @@ app.post("/api/check-all", async (req, res) => {
 app.get("/api/alerts", (req, res) => {
   const alerts = readJson(alertsFile);
   res.json(alerts);
+});
+
+app.get("/api/history", (req, res) => {
+  const history = readJson(historyFile);
+  res.json(history);
+});
+
+app.get("/api/history/:domain", (req, res) => {
+  const domainName = cleanDomain(req.params.domain);
+  const history = readJson(historyFile);
+
+  const domainHistory = history.filter((item) => item.domain === domainName);
+
+  res.json({
+    domain: domainName,
+    history: domainHistory,
+  });
 });
 
 app.delete("/api/domains/:domain", (req, res) => {
