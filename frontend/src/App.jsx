@@ -4,49 +4,24 @@ import "./App.css";
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5001";
 
 function App() {
+  const [domain, setDomain] = useState("");
   const [domains, setDomains] = useState([]);
   const [alerts, setAlerts] = useState([]);
-  const [domainInput, setDomainInput] = useState("");
-  const [backendOnline, setBackendOnline] = useState(false);
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
   async function loadData() {
     try {
-      const domainRes = await fetch(`${API_URL}/api/domains`);
-      const alertRes = await fetch(`${API_URL}/api/alerts`);
+      const domainsRes = await fetch(`${API_URL}/api/domains`);
+      const alertsRes = await fetch(`${API_URL}/api/alerts`);
 
-      if (!domainRes.ok || !alertRes.ok) {
-        throw new Error("Backend error");
-      }
+      const domainsData = await domainsRes.json();
+      const alertsData = await alertsRes.json();
 
-      const domainData = await domainRes.json();
-      const alertData = await alertRes.json();
-
-      setDomains(domainData);
-      setAlerts(alertData);
-      setBackendOnline(true);
+      setDomains(domainsData);
+      setAlerts(alertsData);
     } catch (error) {
-      setBackendOnline(false);
-      setDomains([]);
-      setAlerts([
-        {
-          id: 1,
-          domain: "example.com",
-          message: "Backend is not connected",
-          time: "Now",
-        },
-        {
-          id: 2,
-          domain: "kinetum.com",
-          message: "Connect deployed backend",
-          time: "1 hr ago",
-        },
-        {
-          id: 3,
-          domain: "brandly.co",
-          message: "Demo alert",
-          time: "3 hr ago",
-        },
-      ]);
+      setMessage("Could not load data. Is backend running?");
     }
   }
 
@@ -57,7 +32,13 @@ function App() {
   async function addDomain(e) {
     e.preventDefault();
 
-    if (!domainInput.trim()) return;
+    if (!domain.trim()) {
+      setMessage("Please enter a domain");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("Checking nameservers...");
 
     try {
       const res = await fetch(`${API_URL}/api/domains`, {
@@ -65,190 +46,168 @@ function App() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ domain: domainInput }),
+        body: JSON.stringify({ domain }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        throw new Error("Could not add domain");
+        setMessage(data.error || "Could not add domain");
+      } else {
+        setMessage("Domain added successfully");
+        setDomain("");
+        loadData();
+      }
+    } catch (error) {
+      setMessage("Backend error. Please check server.");
+    }
+
+    setLoading(false);
+  }
+
+  async function checkAllDomains() {
+    setLoading(true);
+    setMessage("Checking all domains...");
+
+    try {
+      const res = await fetch(`${API_URL}/api/check-all`, {
+        method: "POST",
+      });
+
+      const data = await res.json();
+
+      const changedCount = data.results.filter((item) => item.changed).length;
+
+      if (changedCount > 0) {
+        setMessage(`${changedCount} nameserver change detected`);
+      } else {
+        setMessage("No nameserver changes found");
       }
 
-      setDomainInput("");
       loadData();
     } catch (error) {
-      alert("Backend is not running. Start backend or deploy backend first.");
+      setMessage("Could not check domains");
+    }
+
+    setLoading(false);
+  }
+
+  async function deleteDomain(domainName) {
+    try {
+      await fetch(`${API_URL}/api/domains/${domainName}`, {
+        method: "DELETE",
+      });
+
+      setMessage("Domain deleted");
+      loadData();
+    } catch (error) {
+      setMessage("Could not delete domain");
     }
   }
 
   return (
-    <div className="app">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brandLogo">⌁</div>
-          <h1>DomainPulse</h1>
-        </div>
-
-        <nav className="nav">
-          <button className="navItem active">⌂ Dashboard</button>
-          <button className="navItem">◎ Domains</button>
-          <button className="navItem">
-            ◇ Alerts <span>{alerts.length}</span>
-          </button>
-          <button className="navItem">◴ History</button>
-          <button className="navItem">▥ Reports</button>
-          <button className="navItem">⚙ Settings</button>
-        </nav>
-
-        <div className="planCard">
-          <h3>Pro Plan</h3>
-          <p>{domains.length} / 1,000 domains</p>
-          <div className="progress">
-            <div style={{ width: `${Math.min(domains.length / 10, 100)}%` }} />
-          </div>
-          <button>Upgrade Plan</button>
-        </div>
-
-        <div className="helpCard">
-          <h3>Need help?</h3>
-          <p>View documentation or contact support.</p>
-        </div>
-      </aside>
-
-      <main className="main">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Domain Monitoring Dashboard</p>
-            <h2>Monitor nameserver changes easily</h2>
-          </div>
-
-          <div className={backendOnline ? "status online" : "status offline"}>
-            <span></span>
-            {backendOnline ? "Backend online" : "Backend offline"}
-          </div>
+    <div className="page">
+      <div className="container">
+        <header className="hero">
+          <p className="badge">DomainPulse</p>
+          <h1>Nameserver Change Tracker</h1>
+          <p>
+            Add a domain, save its current nameservers, and check later if the
+            nameservers changed.
+          </p>
         </header>
 
-        <section className="stats">
-          <div className="statCard">
-            <p>Total Domains</p>
-            <h3>{domains.length}</h3>
-            <span>Active portfolio</span>
-          </div>
+        <form onSubmit={addDomain} className="domain-form">
+          <input
+            type="text"
+            placeholder="Enter domain, e.g. kinetum.com"
+            value={domain}
+            onChange={(e) => setDomain(e.target.value)}
+          />
 
-          <div className="statCard">
-            <p>Recent Alerts</p>
-            <h3>{alerts.length}</h3>
-            <span>Last 24 hours</span>
-          </div>
+          <button disabled={loading}>
+            {loading ? "Working..." : "Add Domain"}
+          </button>
+        </form>
 
-          <div className="statCard">
-            <p>Changes Found</p>
-            <h3>0</h3>
-            <span>Across all domains</span>
-          </div>
+        <div className="actions">
+          <button onClick={checkAllDomains} disabled={loading}>
+            Check All Domains
+          </button>
+        </div>
 
-          <div className="statCard">
-            <p>Healthy Domains</p>
-            <h3>{domains.length}</h3>
-            <span>All domains healthy</span>
-          </div>
-        </section>
+        {message && <p className="message">{message}</p>}
 
-        {!backendOnline && (
-          <section className="warning">
-            <div className="warningIcon">◇</div>
-            <div>
-              <h3>Backend is not running</h3>
-              <p>
-                Your frontend is live, but it cannot connect to your backend API.
-                Deploy backend and add the backend URL in Vercel.
-              </p>
-            </div>
-            <button>View System Status →</button>
-          </section>
-        )}
+        <section className="section">
+          <h2>Tracked Domains</h2>
 
-        <section className="contentGrid">
-          <div className="panel large">
-            <div className="panelHeader">
-              <div>
-                <h3>Domain Monitoring</h3>
-                <p>{domains.length} domains</p>
-              </div>
+          {domains.length === 0 ? (
+            <p className="empty">No domains added yet.</p>
+          ) : (
+            <div className="grid">
+              {domains.map((item) => (
+                <div className="card" key={item.id}>
+                  <div className="card-top">
+                    <h3>{item.domain}</h3>
+                    <button
+                      className="delete-btn"
+                      onClick={() => deleteDomain(item.domain)}
+                    >
+                      Delete
+                    </button>
+                  </div>
 
-              <div className="filters">
-                <select>
-                  <option>All Status</option>
-                  <option>Healthy</option>
-                  <option>Changed</option>
-                </select>
+                  <p className="small">
+                    Last checked:{" "}
+                    {item.lastCheckedAt
+                      ? new Date(item.lastCheckedAt).toLocaleString()
+                      : "Never"}
+                  </p>
 
-                <input placeholder="Search domains..." />
-              </div>
-            </div>
-
-            <div className="table">
-              <div className="tableHead">
-                <span>Domain</span>
-                <span>Nameserver Status</span>
-                <span>Last Checked</span>
-                <span>Status</span>
-              </div>
-
-              {domains.length === 0 ? (
-                <div className="emptyState">
-                  <h4>No domains added yet.</h4>
-                  <p>Add your first domain to start monitoring nameservers.</p>
+                  <div className="ns-list">
+                    {item.nameservers?.map((ns) => (
+                      <span key={ns}>{ns}</span>
+                    ))}
+                  </div>
                 </div>
-              ) : (
-                domains.map((item) => (
-                  <div className="tableRow" key={item.id}>
-                    <span>{item.domain}</span>
-                    <span>Stable</span>
-                    <span>Just now</span>
-                    <span className="badge healthy">Healthy</span>
-                  </div>
-                ))
-              )}
+              ))}
             </div>
-          </div>
-
-          <div className="sideColumn">
-            <div className="panel">
-              <div className="panelHeader">
-                <h3>Recent Alerts</h3>
-                <button className="linkBtn">View all</button>
-              </div>
-
-              <div className="alertList">
-                {alerts.map((alert) => (
-                  <div className="alertItem" key={alert.id}>
-                    <div className="dot"></div>
-                    <div>
-                      <h4>{alert.domain}</h4>
-                      <p>{alert.message || "No recent changes"}</p>
-                    </div>
-                    <span>{alert.time || "Now"}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="panel addPanel">
-              <div className="addIcon">◎</div>
-              <h3>Add New Domain</h3>
-              <p>Start monitoring a domain for nameserver changes.</p>
-
-              <form onSubmit={addDomain}>
-                <input
-                  value={domainInput}
-                  onChange={(e) => setDomainInput(e.target.value)}
-                  placeholder="example.com"
-                />
-                <button type="submit">Add Domain</button>
-              </form>
-            </div>
-          </div>
+          )}
         </section>
-      </main>
+
+        <section className="section">
+          <h2>Alerts</h2>
+
+          {alerts.length === 0 ? (
+            <p className="empty">No alerts yet.</p>
+          ) : (
+            <div className="alerts">
+              {alerts.map((alert) => (
+                <div className="alert" key={alert.id}>
+                  <h3>{alert.message}</h3>
+                  <p>{new Date(alert.createdAt).toLocaleString()}</p>
+
+                  <div className="change-box">
+                    <div>
+                      <strong>Old NS</strong>
+                      {alert.oldNameservers.map((ns) => (
+                        <span key={ns}>{ns}</span>
+                      ))}
+                    </div>
+
+                    <div>
+                      <strong>New NS</strong>
+                      {alert.newNameservers.map((ns) => (
+                        <span key={ns}>{ns}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
