@@ -1,8 +1,9 @@
 const express = require("express");
 const cors = require("cors");
-const fs = require("fs");
-const path = require("path");
-const dns = require("node:dns").promises;
+const dns = require("dns").promises;
+require("dotenv").config();
+
+const pool = require("./db");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -10,302 +11,198 @@ const PORT = process.env.PORT || 5001;
 app.use(cors());
 app.use(express.json());
 
-const dataDir = path.join(__dirname, "data");
-const domainsFile = path.join(dataDir, "domains.json");
-const alertsFile = path.join(dataDir, "alerts.json");
-const historyFile = path.join(dataDir, "ns-history.json");
+// Create tables
+async function initDB() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS domains (
+      id SERIAL PRIMARY KEY,
+      domain TEXT UNIQUE NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
 
-function ensureFiles() {
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir);
-  }
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ns_history (
+      id SERIAL PRIMARY KEY,
+      domain TEXT NOT NULL,
+      nameservers JSONB NOT NULL,
+      checked_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
 
-  if (!fs.existsSync(domainsFile)) {
-    fs.writeFileSync(domainsFile, "[]");
-  }
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS alerts (
+      id SERIAL PRIMARY KEY,
+      domain TEXT NOT NULL,
+      old_nameservers JSONB,
+      new_nameservers JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
 
-  if (!fs.existsSync(alertsFile)) {
-    fs.writeFileSync(alertsFile, "[]");
-  }
-
-  if (!fs.existsSync(historyFile)) {
-    fs.writeFileSync(historyFile, "[]");
-  }
+  console.log("PostgreSQL tables ready");
 }
 
-function readJson(file) {
-  ensureFiles();
-  return JSON.parse(fs.readFileSync(file, "utf-8"));
-}
+initDB().catch((err) => {
+  console.error("Database init error:", err);
+});
 
-function writeJson(file, data) {
-  ensureFiles();
-  fs.writeFileSync(file, JSON.stringify(data, null, 2));
-}
-
-function cleanDomain(input) {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .split("/")[0];
-}
-
-function normalizeNameservers(nameservers) {
-  return nameservers
-    .map((ns) => ns.toLowerCase().replace(/\.$/, ""))
-    .sort();
-}
-
-function areSameNameservers(oldNs, newNs) {
-  return JSON.stringify(oldNs) === JSON.stringify(newNs);
-}
-
-async function getNameservers(domain) {
-  const ns = await dns.resolveNs(domain);
-  return normalizeNameservers(ns);
-}
-
+// Home route
 app.get("/", (req, res) => {
-  res.json({
-    message: "DomainPulse backend running",
-  });
+  res.json({ message: "DomainPulse backend running with PostgreSQL" });
 });
 
-app.get("/api/domains", (req, res) => {
-  const domains = readJson(domainsFile);
-  res.json(domains);
-});
-
+// Add domain
 app.post("/api/domains", async (req, res) => {
   try {
-    const domain = cleanDomain(req.body.domain || "");
+    const { domain } = req.body;
 
     if (!domain) {
       return res.status(400).json({ error: "Domain is required" });
     }
 
-    const domains = readJson(domainsFile);
-    const history = readJson(historyFile);
+    const cleanDomain = domain.toLowerCase().trim();
 
-    const existingDomain = domains.find((item) => item.domain === domain);
+    const result = await pool.query(
+      `INSERT INTO domains (domain)
+       VALUES ($1)
+       ON CONFLICT (domain) DO NOTHING
+       RETURNING *`,
+      [cleanDomain]
+    );
 
-    if (existingDomain) {
-      return res.status(409).json({
-        error: "Domain already exists",
-        domain: existingDomain,
-      });
+    if (result.rows.length === 0) {
+      return res.json({ message: "Domain already exists", domain: cleanDomain });
     }
 
-    const nameservers = await getNameservers(domain);
-
-    const newDomain = {
-      id: Date.now(),
-      domain,
-      nameservers,
-      createdAt: new Date().toISOString(),
-      lastCheckedAt: new Date().toISOString(),
-    };
-
-    domains.push(newDomain);
-
-    history.unshift({
-      id: Date.now() + Math.floor(Math.random() * 1000),
-      domain,
-      type: "INITIAL_NS",
-      nameservers,
-      createdAt: new Date().toISOString(),
-    });
-
-    writeJson(domainsFile, domains);
-    writeJson(historyFile, history);
-
-    res.status(201).json({
-      message: "Domain added successfully",
-      domain: newDomain,
-    });
+    res.json({ message: "Domain added", domain: result.rows[0] });
   } catch (error) {
-    res.status(500).json({
-      error: "Could not fetch nameservers",
-      details: error.message,
-    });
+    console.error("Add domain error:", error);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
+// Get all domains
+app.get("/api/domains", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM domains ORDER BY created_at DESC`
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Get domains error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Delete domain
+app.delete("/api/domains/:domain", async (req, res) => {
+  try {
+    const domain = req.params.domain.toLowerCase().trim();
+
+    await pool.query(`DELETE FROM domains WHERE domain = $1`, [domain]);
+
+    res.json({ message: "Domain deleted", domain });
+  } catch (error) {
+    console.error("Delete domain error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Check nameservers and save history
 app.post("/api/check/:domain", async (req, res) => {
   try {
-    const domainName = cleanDomain(req.params.domain);
+    const domain = req.params.domain.toLowerCase().trim();
 
-    const domains = readJson(domainsFile);
-    const alerts = readJson(alertsFile);
-    const history = readJson(historyFile);
+    const nameservers = await dns.resolveNs(domain);
 
-    const domain = domains.find((item) => item.domain === domainName);
+    const latestHistory = await pool.query(
+      `SELECT nameservers
+       FROM ns_history
+       WHERE domain = $1
+       ORDER BY checked_at DESC
+       LIMIT 1`,
+      [domain]
+    );
 
-    if (!domain) {
-      return res.status(404).json({ error: "Domain not found" });
+    const oldNameservers =
+      latestHistory.rows.length > 0 ? latestHistory.rows[0].nameservers : null;
+
+    await pool.query(
+      `INSERT INTO ns_history (domain, nameservers)
+       VALUES ($1, $2)`,
+      [domain, JSON.stringify(nameservers)]
+    );
+
+    const changed =
+      oldNameservers &&
+      JSON.stringify([...oldNameservers].sort()) !==
+        JSON.stringify([...nameservers].sort());
+
+    if (changed) {
+      await pool.query(
+        `INSERT INTO alerts (domain, old_nameservers, new_nameservers)
+         VALUES ($1, $2, $3)`,
+        [
+          domain,
+          JSON.stringify(oldNameservers),
+          JSON.stringify(nameservers),
+        ]
+      );
     }
-
-    const oldNameservers = domain.nameservers || [];
-    const newNameservers = await getNameservers(domainName);
-
-    domain.lastCheckedAt = new Date().toISOString();
-
-    if (!areSameNameservers(oldNameservers, newNameservers)) {
-      const alert = {
-        id: Date.now(),
-        domain: domainName,
-        type: "NS_CHANGE",
-        message: `Nameserver changed for ${domainName}`,
-        oldNameservers,
-        newNameservers,
-        createdAt: new Date().toISOString(),
-      };
-
-      const historyItem = {
-        id: Date.now() + Math.floor(Math.random() * 1000),
-        domain: domainName,
-        type: "NS_CHANGE",
-        oldNameservers,
-        newNameservers,
-        createdAt: new Date().toISOString(),
-      };
-
-      alerts.unshift(alert);
-      history.unshift(historyItem);
-      domain.nameservers = newNameservers;
-
-      writeJson(alertsFile, alerts);
-      writeJson(domainsFile, domains);
-      writeJson(historyFile, history);
-
-      return res.json({
-        changed: true,
-        message: "Nameserver change detected",
-        alert,
-        history: historyItem,
-      });
-    }
-
-    writeJson(domainsFile, domains);
 
     res.json({
-      changed: false,
-      message: "No nameserver change detected",
       domain,
+      nameservers,
+      changed: Boolean(changed),
     });
   } catch (error) {
+    console.error("Check nameserver error:", error);
     res.status(500).json({
-      error: "Check failed",
+      error: "Could not check nameservers",
       details: error.message,
     });
   }
 });
 
-app.post("/api/check-all", async (req, res) => {
-  const domains = readJson(domainsFile);
-  const alerts = readJson(alertsFile);
-  const history = readJson(historyFile);
+// Get history for one domain
+app.get("/api/history/:domain", async (req, res) => {
+  try {
+    const domain = req.params.domain.toLowerCase().trim();
 
-  const results = [];
+    const result = await pool.query(
+      `SELECT domain, nameservers, checked_at
+       FROM ns_history
+       WHERE domain = $1
+       ORDER BY checked_at DESC`,
+      [domain]
+    );
 
-  for (const domain of domains) {
-    try {
-      const oldNameservers = domain.nameservers || [];
-      const newNameservers = await getNameservers(domain.domain);
-
-      domain.lastCheckedAt = new Date().toISOString();
-
-      if (!areSameNameservers(oldNameservers, newNameservers)) {
-        const alert = {
-          id: Date.now() + Math.floor(Math.random() * 1000),
-          domain: domain.domain,
-          type: "NS_CHANGE",
-          message: `Nameserver changed for ${domain.domain}`,
-          oldNameservers,
-          newNameservers,
-          createdAt: new Date().toISOString(),
-        };
-
-        const historyItem = {
-          id: Date.now() + Math.floor(Math.random() * 1000),
-          domain: domain.domain,
-          type: "NS_CHANGE",
-          oldNameservers,
-          newNameservers,
-          createdAt: new Date().toISOString(),
-        };
-
-        alerts.unshift(alert);
-        history.unshift(historyItem);
-        domain.nameservers = newNameservers;
-
-        results.push({
-          domain: domain.domain,
-          changed: true,
-          alert,
-          history: historyItem,
-        });
-      } else {
-        results.push({
-          domain: domain.domain,
-          changed: false,
-        });
-      }
-    } catch (error) {
-      results.push({
-        domain: domain.domain,
-        changed: false,
-        error: error.message,
-      });
-    }
+    res.json({
+      domain,
+      history: result.rows,
+    });
+  } catch (error) {
+    console.error("History error:", error);
+    res.status(500).json({ error: "Server error" });
   }
-
-  writeJson(domainsFile, domains);
-  writeJson(alertsFile, alerts);
-  writeJson(historyFile, history);
-
-  res.json({
-    message: "All domains checked",
-    results,
-  });
 });
 
-app.get("/api/alerts", (req, res) => {
-  const alerts = readJson(alertsFile);
-  res.json(alerts);
-});
+// Get alerts
+app.get("/api/alerts", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT *
+       FROM alerts
+       ORDER BY created_at DESC`
+    );
 
-app.get("/api/history", (req, res) => {
-  const history = readJson(historyFile);
-  res.json(history);
-});
-
-app.get("/api/history/:domain", (req, res) => {
-  const domainName = cleanDomain(req.params.domain);
-  const history = readJson(historyFile);
-
-  const domainHistory = history.filter((item) => item.domain === domainName);
-
-  res.json({
-    domain: domainName,
-    history: domainHistory,
-  });
-});
-
-app.delete("/api/domains/:domain", (req, res) => {
-  const domainName = cleanDomain(req.params.domain);
-
-  const domains = readJson(domainsFile);
-  const updatedDomains = domains.filter((item) => item.domain !== domainName);
-
-  writeJson(domainsFile, updatedDomains);
-
-  res.json({
-    message: "Domain deleted",
-    domain: domainName,
-  });
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Alerts error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 app.listen(PORT, () => {
