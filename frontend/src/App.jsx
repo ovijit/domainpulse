@@ -1,82 +1,69 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
-const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost:5001").replace(
-  /\/$/,
-  ""
-);
-
-function cleanDomain(value) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .replace(/\/.*$/, "");
-}
-
-function formatDate(dateValue) {
-  if (!dateValue) return "Unknown";
-  return new Date(dateValue).toLocaleString();
-}
+const API_BASE =
+  import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "http://localhost:5001";
 
 function App() {
-  const [domainInput, setDomainInput] = useState("");
   const [domains, setDomains] = useState([]);
-  const [selectedDomain, setSelectedDomain] = useState("");
-  const [history, setHistory] = useState([]);
-  const [latestCheck, setLatestCheck] = useState(null);
-
-  const [loadingDomains, setLoadingDomains] = useState(false);
-  const [addingDomain, setAddingDomain] = useState(false);
+  const [domainInput, setDomainInput] = useState("");
+  const [loading, setLoading] = useState(false);
   const [checkingDomain, setCheckingDomain] = useState("");
+  const [checks, setChecks] = useState({});
   const [message, setMessage] = useState("");
 
-  const totalDomains = domains.length;
+  const changedCount = useMemo(() => {
+    return Object.values(checks).filter((item) => item?.changed).length;
+  }, [checks]);
 
-  const latestNameservers = useMemo(() => {
-    if (latestCheck?.nameservers?.length) {
-      return latestCheck.nameservers;
-    }
-
-    if (history?.length > 0) {
-      const newest = history[history.length - 1];
-      return newest.nameservers || newest.ns || [];
-    }
-
-    return [];
-  }, [latestCheck, history]);
-
-  async function fetchDomains() {
+  async function loadDomains() {
     try {
-      setLoadingDomains(true);
+      setLoading(true);
+      setMessage("");
+
       const res = await fetch(`${API_BASE}/api/domains`);
-      const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.message || "Failed to load domains");
+        throw new Error("Backend connection failed");
       }
 
-      setDomains(Array.isArray(data) ? data : []);
+      const data = await res.json();
+      setDomains(data);
     } catch (error) {
-      setMessage("Could not connect to backend. Check if backend is running.");
+      setMessage(
+        "Could not connect to backend. Check your Render URL or local backend."
+      );
     } finally {
-      setLoadingDomains(false);
+      setLoading(false);
     }
+  }
+
+  useEffect(() => {
+    loadDomains();
+  }, []);
+
+  function cleanDomain(value) {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace("https://", "")
+      .replace("http://", "")
+      .replace("www.", "")
+      .replace(/\/$/, "");
   }
 
   async function addDomain(e) {
     e.preventDefault();
 
-    const domain = cleanDomain(domainInput);
+    const clean = cleanDomain(domainInput);
 
-    if (!domain) {
+    if (!clean) {
       setMessage("Please enter a domain name.");
       return;
     }
 
     try {
-      setAddingDomain(true);
+      setLoading(true);
       setMessage("");
 
       const res = await fetch(`${API_BASE}/api/domains`, {
@@ -84,23 +71,22 @@ function App() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ domain }),
+        body: JSON.stringify({ domain: clean }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.message || "Could not add domain");
+        throw new Error(data?.message || "Could not add domain");
       }
 
       setDomainInput("");
-      setSelectedDomain(domain);
-      setMessage(`${domain} added successfully.`);
-      await fetchDomains();
+      setMessage(`${clean} added successfully.`);
+      await loadDomains();
     } catch (error) {
-      setMessage(error.message);
+      setMessage(error.message || "Something went wrong.");
     } finally {
-      setAddingDomain(false);
+      setLoading(false);
     }
   }
 
@@ -108,7 +94,6 @@ function App() {
     try {
       setCheckingDomain(domain);
       setMessage("");
-      setLatestCheck(null);
 
       const res = await fetch(`${API_BASE}/api/check/${domain}`, {
         method: "POST",
@@ -117,101 +102,86 @@ function App() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.message || "Domain check failed");
+        throw new Error(data?.message || "Could not check domain");
       }
 
-      setLatestCheck(data);
-      setSelectedDomain(domain);
+      setChecks((prev) => ({
+        ...prev,
+        [domain]: data,
+      }));
+
       setMessage(
         data.changed
-          ? `Alert: ${domain} nameservers changed.`
-          : `${domain} checked. No change found.`
+          ? `${domain} nameservers changed.`
+          : `${domain} has no nameserver change.`
       );
-
-      await fetchHistory(domain);
     } catch (error) {
-      setMessage(error.message);
+      setMessage(error.message || "Check failed.");
     } finally {
       setCheckingDomain("");
     }
   }
 
-  async function fetchHistory(domain) {
-    try {
-      setSelectedDomain(domain);
-
-      const res = await fetch(`${API_BASE}/api/history/${domain}`);
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || "Could not load history");
-      }
-
-      setHistory(Array.isArray(data.history) ? data.history : []);
-    } catch (error) {
-      setHistory([]);
-      setMessage(error.message);
+  async function checkAllDomains() {
+    for (const item of domains) {
+      await checkDomain(item.domain);
     }
   }
-
-  useEffect(() => {
-    fetchDomains();
-  }, []);
 
   return (
     <main className="app">
       <section className="hero">
         <nav className="nav">
           <div className="brand">
-            <div className="brand-icon">DP</div>
+            <div className="logo">DP</div>
             <div>
               <h1>DomainPulse</h1>
               <p>Nameserver monitoring for domain investors</p>
             </div>
           </div>
 
-          <button className="ghost-btn" onClick={fetchDomains}>
-            Refresh
-          </button>
+          <div className="api-pill">
+            <span></span>
+            API Connected
+          </div>
         </nav>
 
         <div className="hero-grid">
           <div className="hero-copy">
-            <div className="pill">Live DNS Watchlist</div>
+            <p className="eyebrow">Domain Intelligence Dashboard</p>
             <h2>Track nameserver changes before opportunities disappear.</h2>
-            <p>
-              Add your domains, run instant DNS checks, and review nameserver
-              history from one clean dashboard.
+            <p className="hero-text">
+              Add domains, monitor DNS changes, and catch movement across your
+              portfolio from one clean dashboard.
             </p>
 
             <form className="domain-form" onSubmit={addDomain}>
               <input
-                type="text"
-                placeholder="Enter domain, e.g. kinetum.com"
                 value={domainInput}
                 onChange={(e) => setDomainInput(e.target.value)}
+                placeholder="Enter domain, example: kinetum.com"
               />
-              <button type="submit" disabled={addingDomain}>
-                {addingDomain ? "Adding..." : "Add Domain"}
+              <button disabled={loading}>
+                {loading ? "Working..." : "Add Domain"}
               </button>
             </form>
 
             {message && <div className="message">{message}</div>}
           </div>
 
-          <div className="status-card">
-            <p className="card-label">Portfolio status</p>
-            <h3>{totalDomains}</h3>
-            <span>domains currently tracked</span>
+          <div className="glass-card hero-card">
+            <p className="card-label">Portfolio Snapshot</p>
+            <div className="big-number">{domains.length}</div>
+            <p>Total domains being monitored</p>
 
             <div className="mini-stats">
               <div>
-                <strong>{history.length}</strong>
-                <small>history records</small>
+                <strong>{changedCount}</strong>
+                <span>Changes found</span>
               </div>
               <div>
-                <strong>{latestCheck?.changed ? "Yes" : "No"}</strong>
-                <small>latest change</small>
+                <strong>{Object.keys(checks).length}</strong>
+                <span>Checked today</span>
               </div>
             </div>
           </div>
@@ -219,118 +189,81 @@ function App() {
       </section>
 
       <section className="dashboard">
-        <div className="panel domains-panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Watchlist</p>
-              <h3>Your domains</h3>
-            </div>
-            <span>{loadingDomains ? "Loading..." : `${totalDomains} total`}</span>
+        <div className="section-header">
+          <div>
+            <p className="eyebrow">Live Monitor</p>
+            <h3>Your Domain Watchlist</h3>
           </div>
 
-          {domains.length === 0 && !loadingDomains ? (
-            <div className="empty-state">
-              <h4>No domains added yet</h4>
-              <p>Add your first domain above and start tracking DNS changes.</p>
-            </div>
-          ) : (
-            <div className="domain-list">
-              {domains.map((item) => (
-                <div
-                  className={`domain-row ${
-                    selectedDomain === item.domain ? "active" : ""
-                  }`}
-                  key={item.id || item.domain}
-                >
-                  <div>
-                    <h4>{item.domain}</h4>
-                    <p>Added {formatDate(item.created_at)}</p>
-                  </div>
-
-                  <div className="row-actions">
-                    <button
-                      className="secondary-btn"
-                      onClick={() => fetchHistory(item.domain)}
-                    >
-                      History
-                    </button>
-
-                    <button
-                      className="primary-btn"
-                      onClick={() => checkDomain(item.domain)}
-                      disabled={checkingDomain === item.domain}
-                    >
-                      {checkingDomain === item.domain ? "Checking..." : "Check"}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <button
+            className="secondary-btn"
+            onClick={checkAllDomains}
+            disabled={!domains.length || checkingDomain}
+          >
+            {checkingDomain ? "Checking..." : "Check All"}
+          </button>
         </div>
 
-        <div className="panel insight-panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">DNS Intelligence</p>
-              <h3>{selectedDomain || "Select a domain"}</h3>
-            </div>
+        {loading && !domains.length ? (
+          <div className="empty-state">Loading domains...</div>
+        ) : domains.length === 0 ? (
+          <div className="empty-state">
+            <h4>No domains added yet</h4>
+            <p>Add your first domain above to start monitoring nameservers.</p>
           </div>
+        ) : (
+          <div className="domain-list">
+            {domains.map((item) => {
+              const result = checks[item.domain];
 
-          <div className="result-box">
-            <p className="card-label">Latest nameservers</p>
-
-            {latestNameservers.length > 0 ? (
-              <div className="ns-list">
-                {latestNameservers.map((ns, index) => (
-                  <span key={`${ns}-${index}`}>{ns}</span>
-                ))}
-              </div>
-            ) : (
-              <p className="muted">
-                Run a check or open history to see nameserver data here.
-              </p>
-            )}
-          </div>
-
-          <div className="history-box">
-            <div className="history-title">
-              <h4>History</h4>
-              <span>{history.length} records</span>
-            </div>
-
-            {history.length === 0 ? (
-              <p className="muted">No history available for this domain yet.</p>
-            ) : (
-              <div className="timeline">
-                {[...history].reverse().map((entry, index) => {
-                  const nameservers = entry.nameservers || entry.ns || [];
-
-                  return (
-                    <div className="timeline-item" key={index}>
-                      <div className="timeline-dot"></div>
-
-                      <div>
-                        <strong>
-                          {entry.changed ? "Nameserver changed" : "Checked"}
-                        </strong>
-                        <p>{formatDate(entry.checked_at || entry.created_at)}</p>
-
-                        {nameservers.length > 0 && (
-                          <div className="timeline-ns">
-                            {nameservers.map((ns, nsIndex) => (
-                              <span key={`${ns}-${nsIndex}`}>{ns}</span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+              return (
+                <article className="domain-card" key={item.id}>
+                  <div className="domain-main">
+                    <div>
+                      <h4>{item.domain}</h4>
+                      <p>
+                        Added{" "}
+                        {item.created_at
+                          ? new Date(item.created_at).toLocaleDateString()
+                          : "recently"}
+                      </p>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+
+                    <div
+                      className={`status-badge ${
+                        result?.changed ? "danger" : "safe"
+                      }`}
+                    >
+                      {result
+                        ? result.changed
+                          ? "Changed"
+                          : "Stable"
+                        : "Not checked"}
+                    </div>
+                  </div>
+
+                  {result?.nameservers?.length > 0 && (
+                    <div className="nameservers">
+                      {result.nameservers.map((ns) => (
+                        <span key={ns}>{ns}</span>
+                      ))}
+                    </div>
+                  )}
+
+                  <button
+                    className="check-btn"
+                    onClick={() => checkDomain(item.domain)}
+                    disabled={checkingDomain === item.domain}
+                  >
+                    {checkingDomain === item.domain
+                      ? "Checking..."
+                      : "Check Nameservers"}
+                  </button>
+                </article>
+              );
+            })}
           </div>
-        </div>
+        )}
       </section>
     </main>
   );
