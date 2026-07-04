@@ -1,409 +1,346 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5001";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5001";
 
 function App() {
   const [domains, setDomains] = useState([]);
-  const [domainInput, setDomainInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [checkingDomain, setCheckingDomain] = useState("");
-  const [checkResults, setCheckResults] = useState({});
+  const [domain, setDomain] = useState("");
+  const [search, setSearch] = useState("");
+  const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
   const [selectedDomain, setSelectedDomain] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [checkingDomain, setCheckingDomain] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    fetchDomains();
+    loadDomains();
   }, []);
 
-  async function fetchDomains() {
+  async function loadDomains() {
     try {
-      setLoading(true);
-      const res = await fetch(`${API_BASE}/api/domains`);
+      const res = await fetch(`${API_URL}/api/domains`);
       const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to load domains");
-      }
-
       setDomains(Array.isArray(data) ? data : []);
     } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setLoading(false);
+      setMessage("Backend is not responding. Start your server first.");
     }
-  }
-
-  function cleanDomain(value) {
-    return value
-      .trim()
-      .toLowerCase()
-      .replace("https://", "")
-      .replace("http://", "")
-      .replace("www.", "")
-      .split("/")[0];
   }
 
   async function addDomain(e) {
     e.preventDefault();
 
-    const domain = cleanDomain(domainInput);
+    const cleanDomain = domain
+      .trim()
+      .toLowerCase()
+      .replace("https://", "")
+      .replace("http://", "")
+      .replace("www.", "")
+      .replace("/", "");
 
-    if (!domain) {
-      setMessage("Please enter a domain name.");
+    if (!cleanDomain) {
+      setMessage("Enter a domain first.");
       return;
     }
 
-    try {
-      setLoading(true);
-      setMessage("");
+    setLoading(true);
+    setMessage("");
 
-      const res = await fetch(`${API_BASE}/api/domains`, {
+    try {
+      const res = await fetch(`${API_URL}/api/domains`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ domain }),
+        body: JSON.stringify({ domain: cleanDomain }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.message || "Could not add domain");
+        setMessage(data.message || "Could not add domain.");
+        return;
       }
 
-      setDomainInput("");
-      setMessage(`${domain} added successfully.`);
-      await fetchDomains();
+      setDomain("");
+      setMessage(`${cleanDomain} is now under watch.`);
+      await loadDomains();
     } catch (error) {
-      setMessage(error.message);
+      setMessage("Failed to add domain. Check backend connection.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function checkDomain(domain) {
-    try {
-      setCheckingDomain(domain);
-      setMessage("");
+  async function checkDomain(domainName) {
+    setCheckingDomain(domainName);
+    setMessage("");
+    setResult(null);
 
-      const res = await fetch(`${API_BASE}/api/check/${domain}`, {
+    try {
+      const res = await fetch(`${API_URL}/api/check/${domainName}`, {
         method: "POST",
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.message || `Could not check ${domain}`);
+        setMessage(data.message || "Could not check domain.");
+        return;
       }
 
-      setCheckResults((prev) => ({
-        ...prev,
-        [domain]: data,
-      }));
+      setResult(data);
+      setSelectedDomain(domainName);
+      await loadHistory(domainName);
 
       if (data.changed) {
-        setMessage(`Nameserver change detected for ${domain}.`);
+        setMessage(`Alert: ${domainName} nameservers changed.`);
       } else {
-        setMessage(`${domain} checked. No change detected.`);
+        setMessage(`${domainName} is stable. No nameserver change detected.`);
       }
     } catch (error) {
-      setMessage(error.message);
+      setMessage("Check failed. Backend may be offline.");
     } finally {
       setCheckingDomain("");
     }
   }
 
-  async function checkAllDomains() {
-    for (const item of domains) {
-      await checkDomain(item.domain);
-    }
-  }
-
-  async function loadHistory(domain) {
+  async function loadHistory(domainName) {
     try {
-      setSelectedDomain(domain);
-      setHistory([]);
-
-      const res = await fetch(`${API_BASE}/api/history/${domain}`);
+      const res = await fetch(`${API_URL}/api/history/${domainName}`);
       const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || "Could not load history");
-      }
-
       setHistory(Array.isArray(data.history) ? data.history : []);
+      setSelectedDomain(domainName);
     } catch (error) {
-      setMessage(error.message);
+      setHistory([]);
     }
   }
 
-  const stats = useMemo(() => {
-    const checkedCount = Object.keys(checkResults).length;
-    const changedCount = Object.values(checkResults).filter(
-      (item) => item.changed
-    ).length;
+  const filteredDomains = useMemo(() => {
+    return domains.filter((item) =>
+      item.domain.toLowerCase().includes(search.toLowerCase())
+    );
+  }, [domains, search]);
 
-    return {
-      total: domains.length,
-      checked: checkedCount,
-      changed: changedCount,
-      stable: checkedCount - changedCount,
-    };
-  }, [domains, checkResults]);
+  const totalDomains = domains.length;
+  const totalHistory = history.length;
+  const changedStatus = result?.changed ? "Change detected" : "Stable";
 
   return (
     <div className="app">
-      <nav className="navbar">
-        <div className="brand">
-          <div className="logo">DP</div>
-          <div>
-            <h1>DomainPulse</h1>
-            <p>Nameserver monitoring for domain investors</p>
+      <section className="hero">
+        <nav className="navbar">
+          <div className="logo">
+            <span className="logo-mark">DP</span>
+            <span>DomainPulse</span>
           </div>
-        </div>
 
-        <div className="nav-actions">
-          <span className="status-dot"></span>
-          <span>Live Monitoring</span>
-        </div>
-      </nav>
+          <div className="nav-pill">Nameserver Intelligence</div>
+        </nav>
 
-      <main className="main">
-        <section className="hero">
-          <div className="hero-content">
-            <span className="badge">Domain SaaS Dashboard</span>
-            <h2>Track nameserver changes before your domains go silent.</h2>
-            <p>
-              Add domains, monitor DNS movements, and catch important
-              nameserver changes from one clean dashboard.
+        <div className="hero-grid">
+          <div className="hero-copy">
+            <p className="eyebrow">Domain monitoring for serious operators</p>
+            <h1>
+              Catch nameserver moves before the market wakes up.
+            </h1>
+            <p className="hero-text">
+              Track domain nameserver changes, watch buyer activity signals,
+              and move faster than lazy investors staring at spreadsheets.
             </p>
 
-            <form className="domain-form" onSubmit={addDomain}>
-              <input
-                type="text"
-                placeholder="Enter domain, example: bitzen.com"
-                value={domainInput}
-                onChange={(e) => setDomainInput(e.target.value)}
-              />
-              <button type="submit" disabled={loading}>
-                {loading ? "Adding..." : "Add Domain"}
-              </button>
-            </form>
-
-            {message && <div className="message">{message}</div>}
-          </div>
-
-          <div className="hero-card">
-            <div className="scan-circle">
-              <span></span>
-            </div>
-            <h3>DNS Pulse Scanner</h3>
-            <p>Monitor domains for nameserver shifts and ownership signals.</p>
-
-            <div className="mini-list">
-              <div>
-                <span>Afternic NS</span>
-                <strong>Active</strong>
-              </div>
-              <div>
-                <span>Sedo Parking</span>
-                <strong>Tracked</strong>
-              </div>
-              <div>
-                <span>Registrar DNS</span>
-                <strong>Watching</strong>
-              </div>
+            <div className="hero-actions">
+              <a href="#tracker" className="primary-btn">
+                Start Tracking
+              </a>
+              <a href="#dashboard" className="secondary-btn">
+                View Dashboard
+              </a>
             </div>
           </div>
-        </section>
 
+          <div className="threat-card">
+            <div className="threat-header">
+              <span>LIVE SIGNAL</span>
+              <strong>DNS Watch</strong>
+            </div>
+
+            <div className="radar">
+              <div className="radar-ring ring-one"></div>
+              <div className="radar-ring ring-two"></div>
+              <div className="radar-dot"></div>
+            </div>
+
+            <div className="threat-footer">
+              <p>Nameserver changes can mean sale, transfer, parking change, or acquisition movement.</p>
+              <strong>React before others even notice.</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <main className="main" id="dashboard">
         <section className="stats-grid">
-          <div className="stat-card">
-            <span>Total Domains</span>
-            <strong>{stats.total}</strong>
-          </div>
-
-          <div className="stat-card">
-            <span>Checked</span>
-            <strong>{stats.checked}</strong>
-          </div>
-
           <div className="stat-card danger">
-            <span>Changes Found</span>
-            <strong>{stats.changed}</strong>
+            <span>Total Watchlist</span>
+            <strong>{totalDomains}</strong>
+            <p>Domains under active monitoring</p>
           </div>
 
-          <div className="stat-card success">
-            <span>Stable</span>
-            <strong>{stats.stable}</strong>
+          <div className="stat-card">
+            <span>Last Status</span>
+            <strong>{result ? changedStatus : "Waiting"}</strong>
+            <p>Latest checked domain result</p>
+          </div>
+
+          <div className="stat-card">
+            <span>History Records</span>
+            <strong>{totalHistory}</strong>
+            <p>{selectedDomain || "Select a domain"}</p>
           </div>
         </section>
 
-        <section className="dashboard">
-          <div className="panel domains-panel">
-            <div className="panel-header">
-              <div>
-                <h3>Domain Watchlist</h3>
-                <p>Your monitored domains and latest DNS status.</p>
-              </div>
+        <section className="tracker-panel" id="tracker">
+          <div className="panel-left">
+            <p className="eyebrow red">Add target</p>
+            <h2>Put a domain on the radar.</h2>
+            <p>
+              Add your domain, check its nameservers, and build a history of
+              movement over time.
+            </p>
+          </div>
 
-              <button
-                className="secondary-btn"
-                onClick={checkAllDomains}
-                disabled={!domains.length || checkingDomain}
-              >
-                {checkingDomain ? "Checking..." : "Check All"}
-              </button>
+          <form className="domain-form" onSubmit={addDomain}>
+            <input
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              placeholder="example.com"
+            />
+            <button disabled={loading}>
+              {loading ? "Adding..." : "Track Domain"}
+            </button>
+          </form>
+        </section>
+
+        {message && <div className="message">{message}</div>}
+
+        {result && (
+          <section className={result.changed ? "result-card alert" : "result-card"}>
+            <div>
+              <span className="result-label">Latest check</span>
+              <h3>{result.domain}</h3>
+              <p>
+                Status:{" "}
+                <strong>
+                  {result.changed ? "Nameserver changed" : "No change detected"}
+                </strong>
+              </p>
             </div>
 
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Domain</th>
-                    <th>Nameservers</th>
-                    <th>Status</th>
-                    <th>Added</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
+            <div className="nameserver-box">
+              <span>Current nameservers</span>
+              {result.nameservers?.length > 0 ? (
+                result.nameservers.map((ns) => <p key={ns}>{ns}</p>)
+              ) : (
+                <p>No nameservers found</p>
+              )}
+            </div>
+          </section>
+        )}
 
-                <tbody>
-                  {domains.length === 0 && (
-                    <tr>
-                      <td colSpan="5" className="empty">
-                        No domains added yet. Add your first domain above.
-                      </td>
-                    </tr>
-                  )}
+        <section className="domain-section">
+          <div className="section-header">
+            <div>
+              <p className="eyebrow red">Watchlist</p>
+              <h2>Your monitored domains</h2>
+            </div>
 
-                  {domains.map((item) => {
-                    const result = checkResults[item.domain];
+            <input
+              className="search-input"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search domains..."
+            />
+          </div>
 
-                    return (
-                      <tr key={item.id || item.domain}>
-                        <td>
-                          <div className="domain-name">
-                            <span>{item.domain}</span>
-                            <small>Tracked domain</small>
-                          </div>
-                        </td>
+          <div className="domain-table">
+            {filteredDomains.length === 0 ? (
+              <div className="empty-state">
+                <h3>No domains yet.</h3>
+                <p>Add your first domain and start tracking nameserver movement.</p>
+              </div>
+            ) : (
+              filteredDomains.map((item) => (
+                <div className="domain-row" key={item.id || item.domain}>
+                  <div>
+                    <strong>{item.domain}</strong>
+                    <span>
+                      Added{" "}
+                      {item.created_at
+                        ? new Date(item.created_at).toLocaleDateString()
+                        : "recently"}
+                    </span>
+                  </div>
 
-                        <td>
-                          {result?.nameservers?.length ? (
-                            <div className="ns-list">
-                              {result.nameservers.map((ns) => (
-                                <span key={ns}>{ns}</span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="muted">Not checked yet</span>
-                          )}
-                        </td>
+                  <div className="row-actions">
+                    <button
+                      onClick={() => checkDomain(item.domain)}
+                      disabled={checkingDomain === item.domain}
+                    >
+                      {checkingDomain === item.domain ? "Checking..." : "Check"}
+                    </button>
 
-                        <td>
-                          {result ? (
-                            result.changed ? (
-                              <span className="pill danger-pill">Changed</span>
-                            ) : (
-                              <span className="pill success-pill">Stable</span>
-                            )
-                          ) : (
-                            <span className="pill neutral-pill">Pending</span>
-                          )}
-                        </td>
+                    <button
+                      className="ghost"
+                      onClick={() => loadHistory(item.domain)}
+                    >
+                      History
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
 
-                        <td>
-                          <span className="muted">
-                            {item.created_at
-                              ? new Date(item.created_at).toLocaleDateString()
-                              : "—"}
-                          </span>
-                        </td>
-
-                        <td>
-                          <div className="actions">
-                            <button
-                              onClick={() => checkDomain(item.domain)}
-                              disabled={checkingDomain === item.domain}
-                            >
-                              {checkingDomain === item.domain
-                                ? "Checking..."
-                                : "Check"}
-                            </button>
-
-                            <button
-                              className="ghost-btn"
-                              onClick={() => loadHistory(item.domain)}
-                            >
-                              History
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+        <section className="history-section">
+          <div className="section-header">
+            <div>
+              <p className="eyebrow red">Movement log</p>
+              <h2>{selectedDomain ? selectedDomain : "Domain history"}</h2>
             </div>
           </div>
 
-          <aside className="panel history-panel">
-            <div className="panel-header">
-              <div>
-                <h3>DNS History</h3>
-                <p>
-                  {selectedDomain
-                    ? `Recent records for ${selectedDomain}`
-                    : "Select a domain to view history."}
-                </p>
+          <div className="history-list">
+            {history.length === 0 ? (
+              <div className="empty-state">
+                <h3>No history found.</h3>
+                <p>Check a domain to create nameserver history.</p>
               </div>
-            </div>
-
-            <div className="history-box">
-              {!selectedDomain && (
-                <div className="empty-state">
-                  <div>📡</div>
-                  <h4>No domain selected</h4>
-                  <p>Click History beside any domain to inspect DNS movement.</p>
-                </div>
-              )}
-
-              {selectedDomain && history.length === 0 && (
-                <div className="empty-state">
-                  <div>✅</div>
-                  <h4>No history yet</h4>
-                  <p>
-                    Run a few checks over time to build nameserver history for
-                    this domain.
-                  </p>
-                </div>
-              )}
-
-              {history.map((entry, index) => (
+            ) : (
+              history.map((item, index) => (
                 <div className="history-item" key={index}>
                   <div>
                     <strong>
-                      {entry.changed ? "Nameserver changed" : "Check recorded"}
+                      {item.changed ? "Change detected" : "Stable check"}
                     </strong>
-                    <p>
-                      {entry.checked_at
-                        ? new Date(entry.checked_at).toLocaleString()
-                        : "Date not available"}
-                    </p>
+                    <span>
+                      {item.checked_at
+                        ? new Date(item.checked_at).toLocaleString()
+                        : "Recently checked"}
+                    </span>
                   </div>
 
-                  <div className="ns-list">
-                    {(entry.nameservers || []).map((ns) => (
-                      <span key={ns}>{ns}</span>
-                    ))}
+                  <div className="history-ns">
+                    {Array.isArray(item.nameservers)
+                      ? item.nameservers.join(", ")
+                      : item.nameservers || "No nameserver data"}
                   </div>
                 </div>
-              ))}
-            </div>
-          </aside>
+              ))
+            )}
+          </div>
         </section>
       </main>
     </div>
