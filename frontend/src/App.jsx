@@ -3,27 +3,34 @@ import "./App.css";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5001";
 
-function App() {
+function cleanDomain(value) {
+  return value
+    .replace("https://", "")
+    .replace("http://", "")
+    .replace("www.", "")
+    .split("/")[0]
+    .trim()
+    .toLowerCase();
+}
+
+export default function App() {
   const [domains, setDomains] = useState([]);
   const [domain, setDomain] = useState("");
-  const [status, setStatus] = useState("Checking backend...");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState("");
+  const [result, setResult] = useState(null);
+  const [message, setMessage] = useState("");
 
   async function loadDomains() {
     try {
+      setLoading(true);
       const res = await fetch(`${API_URL}/api/domains`);
-
-      if (!res.ok) {
-        throw new Error("Backend error");
-      }
-
       const data = await res.json();
-      setDomains(data);
-      setStatus("Backend connected");
-    } catch (error) {
-      setStatus("Backend not connected");
-      setDomains([]);
+      setDomains(Array.isArray(data) ? data : []);
+    } catch {
+      setMessage("Backend not connected. Check your API URL.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -34,157 +41,147 @@ function App() {
   async function addDomain(e) {
     e.preventDefault();
 
-    if (!domain.trim()) return;
+    const finalDomain = cleanDomain(domain);
 
-    setLoading(true);
+    if (!finalDomain) {
+      setMessage("Please enter a domain.");
+      return;
+    }
 
     try {
+      setMessage("");
+
       const res = await fetch(`${API_URL}/api/domains`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ domain: domain.trim() }),
+        body: JSON.stringify({ domain: finalDomain }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        throw new Error("Could not add domain");
+        setMessage(data.message || "Could not add domain.");
+        return;
       }
 
       setDomain("");
+      setMessage("Domain added.");
       await loadDomains();
-    } catch (error) {
-      alert("Could not add domain. Check backend.");
-    } finally {
-      setLoading(false);
+    } catch {
+      setMessage("Could not connect to backend.");
     }
   }
 
   async function checkDomain(domainName) {
-    setChecking(domainName);
-
     try {
+      setChecking(domainName);
+      setMessage("");
+      setResult(null);
+
       const res = await fetch(`${API_URL}/api/check/${domainName}`, {
         method: "POST",
       });
 
-      if (!res.ok) {
-        throw new Error("Could not check domain");
-      }
-
       const data = await res.json();
 
-      alert(
-        `${data.domain}\n\nNameservers:\n${
-          data.nameservers?.join("\n") || "No nameservers found"
-        }\n\nChanged: ${data.changed ? "Yes" : "No"}`
-      );
-    } catch (error) {
-      alert("Could not check domain.");
+      if (!res.ok) {
+        setMessage(data.message || "Check failed.");
+        return;
+      }
+
+      setResult(data);
+    } catch {
+      setMessage("Could not check domain.");
     } finally {
       setChecking("");
     }
   }
 
   return (
-    <main className="page">
-      <nav className="nav">
-        <div className="brand">
-          <div className="logo">D</div>
-          <span>DomainPulse</span>
-        </div>
+    <div className="app">
+      <header className="nav">
+        <div className="brand">DomainPulse</div>
+        <div className="navText">Minimal DNS monitoring</div>
+      </header>
 
-        <div
-          className={
-            status === "Backend connected"
-              ? "backend-status online"
-              : "backend-status offline"
-          }
-        >
-          <span></span>
-          {status}
-        </div>
-      </nav>
+      <main className="container">
+        <section className="hero">
+          <p className="label">Domain monitoring</p>
+          <h1>Track nameserver changes without noise.</h1>
+          <p className="subtext">
+            Add domains, check nameservers, and keep your watchlist clean.
+          </p>
 
-      <section className="hero">
-        <p className="tagline">Domain monitoring made simple</p>
+          <form className="form" onSubmit={addDomain}>
+            <input
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              placeholder="example.com"
+            />
+            <button type="submit">Add domain</button>
+          </form>
 
-        <h1>
-          Track DNS changes before they become expensive surprises.
-        </h1>
+          {message && <p className="message">{message}</p>}
+        </section>
 
-        <p className="description">
-          Add domains, monitor nameserver changes, and keep your portfolio under
-          control from one clean dashboard.
-        </p>
+        {result && (
+          <section className="card resultCard">
+            <div>
+              <p className="smallLabel">Latest check</p>
+              <h2>{result.domain}</h2>
+            </div>
 
-        <form onSubmit={addDomain} className="form">
-          <input
-            type="text"
-            placeholder="example.com"
-            value={domain}
-            onChange={(e) => setDomain(e.target.value)}
-          />
-          <button disabled={loading}>
-            {loading ? "Adding..." : "Add domain"}
-          </button>
-        </form>
-      </section>
+            <div className={result.changed ? "status changed" : "status stable"}>
+              {result.changed ? "Changed" : "No change"}
+            </div>
 
-      <section className="stats">
-        <div className="stat-card">
-          <h2>{domains.length}</h2>
-          <p>Domains tracked</p>
-        </div>
-
-        <div className="stat-card">
-          <h2>{status === "Backend connected" ? "Live" : "Offline"}</h2>
-          <p>API status</p>
-        </div>
-
-        <div className="stat-card">
-          <h2>DNS</h2>
-          <p>Nameserver checks</p>
-        </div>
-      </section>
-
-      <section className="domains-section">
-        <div className="section-header">
-          <div>
-            <h2>Your domains</h2>
-            <p>Monitor all added domains here.</p>
-          </div>
-        </div>
-
-        {domains.length === 0 ? (
-          <div className="empty">
-            <h3>No domains yet</h3>
-            <p>Add your first domain above.</p>
-          </div>
-        ) : (
-          <div className="domain-list">
-            {domains.map((item) => (
-              <div className="domain-card" key={item.id}>
-                <div>
-                  <h3>{item.domain}</h3>
-                  <p>
-                    Added{" "}
-                    {item.created_at
-                      ? new Date(item.created_at).toLocaleDateString()
-                      : "recently"}
-                  </p>
-                </div>
-
-                <button onClick={() => checkDomain(item.domain)}>
-                  {checking === item.domain ? "Checking..." : "Check DNS"}
-                </button>
-              </div>
-            ))}
-          </div>
+            <div className="nameservers">
+              {(result.nameservers || []).length > 0 ? (
+                result.nameservers.map((ns) => <span key={ns}>{ns}</span>)
+              ) : (
+                <span>No nameservers found</span>
+              )}
+            </div>
+          </section>
         )}
-      </section>
-    </main>
+
+        <section className="card">
+          <div className="cardHeader">
+            <div>
+              <p className="smallLabel">Watchlist</p>
+              <h2>Your domains</h2>
+            </div>
+            <span className="count">{domains.length}</span>
+          </div>
+
+          {loading ? (
+            <p className="empty">Loading domains...</p>
+          ) : domains.length === 0 ? (
+            <p className="empty">No domains yet. Add your first domain above.</p>
+          ) : (
+            <div className="domainList">
+              {domains.map((item) => (
+                <div className="domainRow" key={item.id || item.domain}>
+                  <div>
+                    <strong>{item.domain}</strong>
+                    <p>Added to watchlist</p>
+                  </div>
+
+                  <button
+                    className="ghostButton"
+                    onClick={() => checkDomain(item.domain)}
+                    disabled={checking === item.domain}
+                  >
+                    {checking === item.domain ? "Checking..." : "Check"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </main>
+    </div>
   );
 }
-
-export default App;
