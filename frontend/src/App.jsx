@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5001";
+const API_BASE = (
+  import.meta.env.VITE_API_URL || "http://localhost:5001"
+).replace(/\/$/, "");
+
+console.log("API_BASE:", API_BASE);
 
 function cleanDomain(value) {
   return value
@@ -20,6 +24,7 @@ function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [result, setResult] = useState(null);
+  const [backendOnline, setBackendOnline] = useState(false);
 
   const stats = useMemo(() => {
     return {
@@ -40,9 +45,12 @@ function App() {
       }
 
       const data = await res.json();
+
       setDomains(Array.isArray(data) ? data : []);
+      setBackendOnline(true);
       setNotice("Backend connected");
     } catch (err) {
+      setBackendOnline(false);
       setError("Backend not connected yet. UI preview is still working.");
     }
   }
@@ -81,9 +89,12 @@ function App() {
       }
 
       setDomain("");
+      setBackendOnline(true);
       setNotice(`${finalDomain} added successfully`);
+
       await fetchDomains();
     } catch (err) {
+      setBackendOnline(false);
       setError(err.message || "Could not add domain");
     } finally {
       setLoading(false);
@@ -100,15 +111,17 @@ function App() {
         method: "POST",
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
 
       if (!res.ok) {
         throw new Error(data?.message || "Could not check domain");
       }
 
       setResult(data);
+      setBackendOnline(true);
       setNotice(`${targetDomain} checked successfully`);
     } catch (err) {
+      setBackendOnline(false);
       setError(err.message || "Could not check domain");
     } finally {
       setChecking("");
@@ -125,8 +138,8 @@ function App() {
           </div>
 
           <div className="status">
-            <span className={error ? "dot offline" : "dot"}></span>
-            {error ? "Backend offline" : "Live"}
+            <span className={backendOnline ? "dot" : "dot offline"}></span>
+            {backendOnline ? "Live" : "Backend offline"}
           </div>
         </nav>
 
@@ -147,6 +160,7 @@ function App() {
                 onChange={(e) => setDomain(e.target.value)}
                 placeholder="example.com"
               />
+
               <button disabled={loading}>
                 {loading ? "Adding..." : "Add domain"}
               </button>
@@ -167,10 +181,12 @@ function App() {
                 <small>Total</small>
                 <strong>{stats.total}</strong>
               </div>
+
               <div>
                 <small>Monitored</small>
                 <strong>{stats.monitored}</strong>
               </div>
+
               <div>
                 <small>Alerts</small>
                 <strong>{stats.alerts}</strong>
@@ -180,7 +196,9 @@ function App() {
             {result && (
               <div className="resultBox">
                 <small>Last check</small>
+
                 <h3>{result.domain}</h3>
+
                 <p>
                   {result.changed
                     ? "Nameservers changed"
@@ -224,6 +242,7 @@ function App() {
               <div className="domainCard" key={item.id || item.domain}>
                 <div>
                   <h3>{item.domain}</h3>
+
                   <p>
                     Added{" "}
                     {item.created_at
