@@ -1,20 +1,18 @@
-require("dotenv").config();
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
+import pg from "pg";
+import dns from "dns/promises";
 
-const express = require("express");
-const cors = require("cors");
-const dns = require("dns").promises;
-const { Pool } = require("pg");
+dotenv.config();
 
 const app = express();
-
 const PORT = process.env.PORT || 5001;
+
+const { Pool } = pg;
 
 app.use(cors());
 app.use(express.json());
-
-if (!process.env.DATABASE_URL) {
-  console.error("DATABASE_URL is missing. Add it inside backend/.env");
-}
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -23,36 +21,23 @@ const pool = new Pool({
   },
 });
 
-async function createTables() {
+async function setupDatabase() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS domains (
       id SERIAL PRIMARY KEY,
       domain TEXT UNIQUE NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      nameservers TEXT[],
+      created_at TIMESTAMP DEFAULT NOW()
     );
   `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS ns_history (
-      id SERIAL PRIMARY KEY,
-      domain TEXT NOT NULL,
-      nameservers TEXT[] NOT NULL,
-      checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-
-  console.log("PostgreSQL tables ready");
 }
 
-createTables().catch((error) => {
-  console.error("Database setup error:", error.message);
-});
+setupDatabase()
+  .then(() => console.log("PostgreSQL tables ready"))
+  .catch((err) => console.error("Database setup error:", err));
 
 app.get("/", (req, res) => {
-  res.json({
-    message: "DomainPulse backend running",
-    routes: ["/api/domains", "/api/check/:domain", "/api/history/:domain"],
-  });
+  res.json({ message: "DomainPulse backend running" });
 });
 
 app.get("/api/domains", async (req, res) => {
@@ -63,11 +48,8 @@ app.get("/api/domains", async (req, res) => {
 
     res.json(result.rows);
   } catch (error) {
-    console.error("Get domains error:", error.message);
-    res.status(500).json({
-      message: "Failed to get domains",
-      error: error.message,
-    });
+    console.error("Fetch domains error:", error);
+    res.status(500).json({ message: "Failed to fetch domains" });
   }
 });
 
@@ -79,17 +61,11 @@ app.post("/api/domains", async (req, res) => {
       return res.status(400).json({ message: "Domain is required" });
     }
 
-    const cleanDomain = domain
-      .trim()
-      .toLowerCase()
-      .replace("https://", "")
-      .replace("http://", "")
-      .replace("www.", "")
-      .replace(/\/$/, "");
+    const cleanDomain = domain.trim().toLowerCase();
 
     const result = await pool.query(
-      "INSERT INTO domains (domain) VALUES ($1) RETURNING *",
-      [cleanDomain]
+      "INSERT INTO domains (domain, nameservers) VALUES ($1, $2) RETURNING *",
+      [cleanDomain, []]
     );
 
     res.status(201).json({
@@ -98,44 +74,40 @@ app.post("/api/domains", async (req, res) => {
     });
   } catch (error) {
     if (error.code === "23505") {
-      return res.status(409).json({
-        message: "Domain already exists",
-      });
+      return res.status(409).json({ message: "Domain already exists" });
     }
 
-    console.error("Add domain error:", error.message);
-
-    res.status(500).json({
-      message: "Failed to add domain",
-      error: error.message,
-    });
+    console.error("Add domain error:", error);
+    res.status(500).json({ message: "Failed to add domain" });
   }
 });
 
 app.post("/api/check/:domain", async (req, res) => {
   try {
-    const domain = req.params.domain.toLowerCase();
+    const domain = req.params.domain.trim().toLowerCase();
 
-    const nameservers = await dns.resolveNs(domain);
+    let nameservers = [];
 
-    const historyResult = await pool.query(
-      "SELECT * FROM ns_history WHERE domain = $1 ORDER BY checked_at DESC LIMIT 1",
+    try {
+      nameservers = await dns.resolveNs(domain);
+      nameservers = nameservers.map((ns) => ns.toLowerCase()).sort();
+    } catch {
+      nameservers = [];
+    }
+
+    const oldResult = await pool.query(
+      "SELECT nameservers FROM domains WHERE domain = $1",
       [domain]
     );
 
-    let changed = false;
+    const oldNameservers = oldResult.rows[0]?.nameservers || [];
 
-    if (historyResult.rows.length > 0) {
-      const oldNameservers = historyResult.rows[0].nameservers || [];
-
-      changed =
-        JSON.stringify([...oldNameservers].sort()) !==
-        JSON.stringify([...nameservers].sort());
-    }
+    const changed =
+      JSON.stringify(oldNameservers.sort()) !== JSON.stringify(nameservers);
 
     await pool.query(
-      "INSERT INTO ns_history (domain, nameservers) VALUES ($1, $2)",
-      [domain, nameservers]
+      "UPDATE domains SET nameservers = $1 WHERE domain = $2",
+      [nameservers, domain]
     );
 
     res.json({
@@ -144,35 +116,8 @@ app.post("/api/check/:domain", async (req, res) => {
       changed,
     });
   } catch (error) {
-    console.error("Check domain error:", error.message);
-
-    res.status(500).json({
-      message: "Failed to check nameservers",
-      error: error.message,
-    });
-  }
-});
-
-app.get("/api/history/:domain", async (req, res) => {
-  try {
-    const domain = req.params.domain.toLowerCase();
-
-    const result = await pool.query(
-      "SELECT * FROM ns_history WHERE domain = $1 ORDER BY checked_at DESC",
-      [domain]
-    );
-
-    res.json({
-      domain,
-      history: result.rows,
-    });
-  } catch (error) {
-    console.error("History error:", error.message);
-
-    res.status(500).json({
-      message: "Failed to get history",
-      error: error.message,
-    });
+    console.error("Check domain error:", error);
+    res.status(500).json({ message: "Failed to check domain" });
   }
 });
 
