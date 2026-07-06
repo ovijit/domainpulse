@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import "./App.css";
 
 const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:5001").replace(/\/$/, "");
@@ -9,29 +9,21 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState("");
   const [message, setMessage] = useState("");
-  const [backendStatus, setBackendStatus] = useState("Checking");
-
-  const totalDomains = domains.length;
-
-  const latestDomain = useMemo(() => {
-    if (!domains.length) return "No domains yet";
-    return domains[0]?.domain || "No domains yet";
-  }, [domains]);
+  const [error, setError] = useState("");
 
   async function loadDomains() {
     try {
+      setError("");
       const res = await fetch(`${API_URL}/api/domains`);
 
       if (!res.ok) {
-        throw new Error("Backend error");
+        throw new Error("Backend not responding");
       }
 
       const data = await res.json();
-      setDomains(Array.isArray(data) ? data.reverse() : []);
-      setBackendStatus("Connected");
-    } catch (error) {
-      setBackendStatus("Not connected");
-      setMessage("Backend is not connected. Start backend or check VITE_API_URL.");
+      setDomains(data);
+    } catch (err) {
+      setError("Backend is not connected. Start backend or check VITE_API_URL.");
     }
   }
 
@@ -44,15 +36,13 @@ function App() {
 
     const cleanDomain = domain.trim().toLowerCase();
 
-    if (!cleanDomain) {
-      setMessage("Please enter a domain name.");
-      return;
-    }
-
-    setLoading(true);
-    setMessage("");
+    if (!cleanDomain) return;
 
     try {
+      setLoading(true);
+      setMessage("");
+      setError("");
+
       const res = await fetch(`${API_URL}/api/domains`, {
         method: "POST",
         headers: {
@@ -61,147 +51,113 @@ function App() {
         body: JSON.stringify({ domain: cleanDomain }),
       });
 
-      const data = await res.json();
-
       if (!res.ok) {
-        throw new Error(data.message || "Could not add domain");
+        throw new Error("Could not add domain");
       }
 
       setDomain("");
-      setMessage(`${cleanDomain} added successfully.`);
+      setMessage("Domain added successfully.");
       await loadDomains();
-    } catch (error) {
-      setMessage(error.message || "Something went wrong.");
+    } catch (err) {
+      setError("Could not add domain. Check your backend connection.");
     } finally {
       setLoading(false);
     }
   }
 
   async function checkDomain(domainName) {
-    setChecking(domainName);
-    setMessage("");
-
     try {
+      setChecking(domainName);
+      setMessage("");
+      setError("");
+
       const res = await fetch(`${API_URL}/api/check/${domainName}`, {
         method: "POST",
       });
 
-      const data = await res.json();
-
       if (!res.ok) {
-        throw new Error(data.message || "Could not check domain");
+        throw new Error("Could not check domain");
       }
 
-      const nsText = data.nameservers?.length
-        ? data.nameservers.join(", ")
-        : "No nameservers found";
+      const data = await res.json();
 
-      setMessage(
-        `${domainName} checked. Nameservers: ${nsText}. Changed: ${
-          data.changed ? "Yes" : "No"
-        }`
-      );
-    } catch (error) {
-      setMessage(error.message || "Could not check domain.");
+      const nameservers =
+        data.nameservers && data.nameservers.length > 0
+          ? data.nameservers.join(", ")
+          : "No nameservers found";
+
+      setMessage(`${domainName}: ${nameservers}`);
+    } catch (err) {
+      setError("Could not check this domain. Backend may be offline.");
     } finally {
       setChecking("");
     }
   }
 
   return (
-    <main className="app">
+    <main className="page">
+      <nav className="nav">
+        <div className="logo">DomainPulse</div>
+        <a href="#domains">Dashboard</a>
+      </nav>
+
       <section className="hero">
-        <nav className="navbar">
-          <div className="brand">
-            <div className="logo">DP</div>
-            <span>DomainPulse</span>
-          </div>
+        <p className="eyebrow">Domain monitoring made simple</p>
+        <h1>Track your domains without the noise.</h1>
+        <p className="subtitle">
+          Add domains, monitor nameservers, and keep your portfolio organized in one clean dashboard.
+        </p>
 
-          <div className={`status ${backendStatus === "Connected" ? "online" : "offline"}`}>
-            <span></span>
-            Backend {backendStatus}
-          </div>
-        </nav>
+        <form onSubmit={addDomain} className="domain-form">
+          <input
+            type="text"
+            placeholder="example.com"
+            value={domain}
+            onChange={(e) => setDomain(e.target.value)}
+          />
+          <button type="submit" disabled={loading}>
+            {loading ? "Adding..." : "Add domain"}
+          </button>
+        </form>
 
-        <div className="hero-grid">
-          <div className="hero-copy">
-            <p className="eyebrow">Domain monitoring for investors</p>
-            <h1>Track nameserver changes before they cost you money.</h1>
-            <p className="subtitle">
-              Add your domains, monitor DNS changes, and keep your portfolio under control from one clean dashboard.
-            </p>
-
-            <form className="add-card" onSubmit={addDomain}>
-              <input
-                value={domain}
-                onChange={(e) => setDomain(e.target.value)}
-                placeholder="example.com"
-              />
-              <button disabled={loading}>
-                {loading ? "Adding..." : "Add Domain"}
-              </button>
-            </form>
-
-            {message && <div className="message">{message}</div>}
-          </div>
-
-          <div className="stats-card">
-            <p>Portfolio Overview</p>
-
-            <div className="stat">
-              <span>Total Domains</span>
-              <strong>{totalDomains}</strong>
-            </div>
-
-            <div className="stat">
-              <span>Latest Added</span>
-              <strong>{latestDomain}</strong>
-            </div>
-
-            <div className="stat">
-              <span>Monitoring</span>
-              <strong>{backendStatus === "Connected" ? "Active" : "Paused"}</strong>
-            </div>
-          </div>
-        </div>
+        {message && <div className="notice success">{message}</div>}
+        {error && <div className="notice error">{error}</div>}
       </section>
 
-      <section className="dashboard">
+      <section id="domains" className="dashboard">
         <div className="section-header">
           <div>
-            <p className="eyebrow">Dashboard</p>
-            <h2>Your domain watchlist</h2>
+            <p className="eyebrow">Portfolio</p>
+            <h2>Your domains</h2>
           </div>
-
-          <button className="refresh-btn" onClick={loadDomains}>
-            Refresh
-          </button>
+          <span>{domains.length} total</span>
         </div>
 
         {domains.length === 0 ? (
-          <div className="empty">
-            <h3>No domains added yet</h3>
-            <p>Add your first domain above to start monitoring nameserver changes.</p>
+          <div className="empty-card">
+            <h3>No domains yet</h3>
+            <p>Add your first domain to start monitoring nameserver changes.</p>
           </div>
         ) : (
           <div className="domain-list">
             {domains.map((item) => (
-              <div className="domain-row" key={item.id}>
+              <div className="domain-card" key={item.id}>
                 <div>
                   <h3>{item.domain}</h3>
                   <p>
                     Added{" "}
                     {item.created_at
-                      ? new Date(item.created_at).toLocaleString()
+                      ? new Date(item.created_at).toLocaleDateString()
                       : "recently"}
                   </p>
                 </div>
 
                 <button
+                  className="secondary-btn"
                   onClick={() => checkDomain(item.domain)}
                   disabled={checking === item.domain}
                 >
-                  {checking === item.domain ? "Checking..." : "Check DNS"}
+                  {checking === item.domain ? "Checking..." : "Check NS"}
                 </button>
               </div>
             ))}
