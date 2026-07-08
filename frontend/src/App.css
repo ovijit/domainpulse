@@ -37,17 +37,26 @@ body,
   min-height: 100%;
 }
 
+#root {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
+
   background: var(--background);
   color: var(--text);
+
   font-family:
     Inter,
     -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
+
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -55,6 +64,11 @@ body {
 button,
 input {
   font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
 }
 
 button {
@@ -139,6 +153,7 @@ a:focus-visible {
 
 .sidebar-nav {
   margin-top: 42px;
+
   display: grid;
   gap: 6px;
 }
@@ -240,6 +255,8 @@ a:focus-visible {
   width: 32px;
   height: 32px;
 
+  flex: 0 0 auto;
+
   display: grid;
   place-items: center;
 
@@ -291,7 +308,7 @@ a:focus-visible {
   animation: pulse 1s ease-in-out infinite;
 }
 
-/* Main */
+/* Main layout */
 
 .main-content {
   min-width: 0;
@@ -329,6 +346,7 @@ a:focus-visible {
 .topbar-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 9px;
 }
 
@@ -370,6 +388,8 @@ a:focus-visible {
   width: 36px;
   height: 36px;
 
+  flex: 0 0 auto;
+
   display: grid;
   place-items: center;
 
@@ -389,7 +409,121 @@ a:focus-visible {
   background: #fafafa;
 }
 
-/* Minimal white hero */
+/* Google Sign-In */
+
+.google-login-wrapper {
+  min-height: 40px;
+
+  display: flex;
+  align-items: center;
+}
+
+.google-config-error {
+  min-height: 36px;
+  padding: 0 11px;
+
+  display: inline-flex;
+  align-items: center;
+
+  border: 1px solid #efd0d0;
+  border-radius: 8px;
+
+  background: #fff8f8;
+  color: var(--danger);
+
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.user-menu {
+  min-height: 42px;
+  padding: 5px 6px 5px 8px;
+
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.user-menu img,
+.user-avatar {
+  width: 30px;
+  height: 30px;
+
+  flex: 0 0 auto;
+
+  border-radius: 50%;
+}
+
+.user-menu img {
+  display: block;
+  object-fit: cover;
+}
+
+.user-avatar {
+  display: grid;
+  place-items: center;
+
+  background: #111111;
+  color: #ffffff;
+
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.user-information {
+  min-width: 0;
+  max-width: 145px;
+}
+
+.user-information strong,
+.user-information small {
+  display: block;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-information strong {
+  color: #111111;
+  font-size: 9px;
+}
+
+.user-information small {
+  margin-top: 3px;
+
+  color: #888888;
+  font-size: 7px;
+}
+
+.sign-out-button {
+  height: 30px;
+  padding: 0 10px;
+
+  border: 1px solid #111111;
+  border-radius: 6px;
+
+  background: #ffffff;
+  color: #111111;
+
+  font-size: 8px;
+  font-weight: 700;
+
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.sign-out-button:hover {
+  background: #111111;
+  color: #ffffff;
+}
+
+/* Hero */
 
 .hero-section {
   max-width: 1180px;
@@ -401,9 +535,7 @@ a:focus-visible {
   justify-content: space-between;
   gap: 32px;
 
-  border: 0;
   border-bottom: 1px solid var(--border);
-  border-radius: 0;
 
   background: #ffffff;
   color: var(--text);
@@ -415,11 +547,6 @@ a:focus-visible {
 
 .hero-eyebrow {
   display: inline-flex;
-
-  padding: 0;
-
-  border: 0;
-  border-radius: 0;
 
   color: var(--text-muted);
 
@@ -478,7 +605,7 @@ a:focus-visible {
   color: #111111;
 }
 
-/* Stats */
+/* Statistics */
 
 .stats-grid {
   max-width: 1180px;
@@ -553,6 +680,8 @@ a:focus-visible {
 .notice-symbol {
   width: 26px;
   height: 26px;
+
+  flex: 0 0 auto;
 
   display: grid;
   place-items: center;
@@ -635,17 +764,19 @@ a:focus-visible {
   width: 38px;
   height: 38px;
 
+  flex: 0 0 auto;
+
   display: grid;
   place-items: center;
 
   border: 1px solid var(--border);
   border-radius: 8px;
+
   background: #ffffff;
 }
 
 .section-heading h2 {
   margin: 0;
-
   font-size: 13px;
 }
 
@@ -673,6 +804,7 @@ a:focus-visible {
 
   border: 1px solid var(--border-dark);
   border-radius: 8px;
+
   background: #ffffff;
   overflow: hidden;
 }
@@ -766,7 +898,6 @@ a:focus-visible {
 
 .domains-header h2 {
   margin: 0;
-
   font-size: 15px;
 }
 
@@ -808,6 +939,10 @@ a:focus-visible {
   color: var(--text);
 
   font-size: 9px;
+}
+
+.search-field input::placeholder {
+  color: #aaaaaa;
 }
 
 .table-wrapper {
@@ -860,6 +995,8 @@ a:focus-visible {
 .domain-letter {
   width: 35px;
   height: 35px;
+
+  flex: 0 0 auto;
 
   display: grid;
   place-items: center;
@@ -1067,7 +1204,6 @@ a:focus-visible {
 
 .empty-state h3 {
   margin: 15px 0 0;
-
   font-size: 12px;
 }
 
@@ -1136,6 +1272,14 @@ a:focus-visible {
 /* Tablet */
 
 @media (max-width: 1100px) {
+  .topbar {
+    align-items: flex-start;
+  }
+
+  .topbar-actions {
+    flex-wrap: wrap;
+  }
+
   .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1191,6 +1335,20 @@ a:focus-visible {
   .connection-pill {
     display: none;
   }
+
+  .user-information,
+  .sign-out-button {
+    display: none;
+  }
+
+  .user-menu {
+    padding: 5px;
+  }
+
+  .google-login-wrapper {
+    max-width: 210px;
+    overflow: hidden;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1198,8 +1356,20 @@ a:focus-visible {
     padding-inline: 13px;
   }
 
+  .topbar {
+    align-items: flex-start;
+  }
+
   .topbar h1 {
     font-size: 26px;
+  }
+
+  .topbar-actions {
+    flex-wrap: nowrap;
+  }
+
+  .google-login-wrapper {
+    max-width: 190px;
   }
 
   .hero-section {
@@ -1331,6 +1501,21 @@ a:focus-visible {
   .footer {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 500px) {
+  .topbar {
+    flex-direction: column;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .google-login-wrapper {
+    max-width: calc(100vw - 100px);
   }
 }
 
