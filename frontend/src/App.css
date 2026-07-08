@@ -1,25 +1,25 @@
 :root {
-  --background: #f5f5f2;
+  --background: #ffffff;
   --surface: #ffffff;
-  --surface-soft: #fafaf8;
+  --surface-soft: #fafafa;
 
-  --text: #11110f;
-  --text-soft: #65655f;
-  --text-muted: #96968f;
+  --text: #111111;
+  --text-soft: #555555;
+  --text-muted: #8a8a8a;
 
-  --border: #e6e6e1;
-  --border-dark: #d5d5ce;
+  --border: #e8e8e8;
+  --border-dark: #cccccc;
 
-  --success: #16784b;
-  --success-background: #eaf7f0;
+  --success: #16804f;
+  --success-background: #edf8f2;
 
-  --warning: #9a5b12;
-  --warning-background: #fff4df;
+  --warning: #9b6118;
+  --warning-background: #fff7e8;
 
-  --danger: #b33939;
-  --danger-background: #fff0f0;
+  --danger: #c53f3f;
+  --danger-background: #fff3f3;
 
-  --sidebar-width: 240px;
+  --sidebar-width: 230px;
 }
 
 * {
@@ -37,12 +37,6 @@ body,
   min-height: 100%;
 }
 
-#root {
-  max-width: none;
-  margin: 0;
-  padding: 0;
-}
-
 body {
   margin: 0;
   min-height: 100vh;
@@ -54,19 +48,13 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 button,
 input {
   font: inherit;
-}
-
-button,
-a {
-  -webkit-tap-highlight-color: transparent;
 }
 
 button {
@@ -80,12 +68,13 @@ button:disabled {
 button:focus-visible,
 input:focus-visible,
 a:focus-visible {
-  outline: 3px solid rgba(17, 17, 15, 0.12);
+  outline: 2px solid #111111;
   outline-offset: 2px;
 }
 
 .app-shell {
   min-height: 100vh;
+  background: #ffffff;
 }
 
 /* Sidebar */
@@ -96,22 +85,20 @@ a:focus-visible {
   z-index: 20;
 
   width: var(--sidebar-width);
-  padding: 24px 18px 18px;
+  padding: 28px 18px 20px;
 
   display: flex;
   flex-direction: column;
   justify-content: space-between;
 
   border-right: 1px solid var(--border);
-  background: var(--surface);
+  background: #ffffff;
 }
 
 .brand {
-  padding: 0 7px;
-
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 12px;
 
   color: var(--text);
   text-decoration: none;
@@ -121,18 +108,17 @@ a:focus-visible {
   width: 38px;
   height: 38px;
 
-  flex: 0 0 auto;
-
   display: grid;
   place-items: center;
 
-  border-radius: 11px;
-  background: var(--text);
+  border: 1px solid #111111;
+  border-radius: 8px;
+
+  background: #111111;
   color: #ffffff;
 
   font-size: 12px;
   font-weight: 800;
-  letter-spacing: -0.03em;
 }
 
 .brand-text strong,
@@ -143,11 +129,10 @@ a:focus-visible {
 .brand-text strong {
   font-size: 14px;
   line-height: 1.2;
-  letter-spacing: -0.025em;
 }
 
 .brand-text small {
-  margin-top: 3px;
+  margin-top: 4px;
   color: var(--text-muted);
   font-size: 9px;
 }
@@ -155,44 +140,48 @@ a:focus-visible {
 .sidebar-nav {
   margin-top: 42px;
   display: grid;
-  gap: 5px;
+  gap: 6px;
 }
 
 .nav-item {
   width: 100%;
   min-height: 42px;
-  padding: 0 11px;
+  padding: 0 12px;
 
   display: flex;
   align-items: center;
   gap: 11px;
 
-  border: 0;
-  border-radius: 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+
   background: transparent;
   color: var(--text-soft);
 
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
   text-align: left;
 
   transition:
     background 150ms ease,
-    color 150ms ease;
+    color 150ms ease,
+    border-color 150ms ease;
 }
 
 .nav-item:hover:not(:disabled) {
+  border-color: var(--border);
   background: var(--surface-soft);
   color: var(--text);
 }
 
 .nav-item.active {
-  background: var(--text);
+  border-color: #111111;
+  background: #111111;
   color: #ffffff;
 }
 
 .nav-item:disabled {
-  opacity: 0.58;
+  opacity: 0.45;
 }
 
 .nav-count,
@@ -209,23 +198,25 @@ a:focus-visible {
   place-items: center;
 
   border-radius: 6px;
-  background: #ecece8;
-  color: #62625c;
+  background: #eeeeee;
+  color: #555555;
 
   font-size: 8px;
 }
 
 .nav-item.active .nav-count {
-  background: rgba(255, 255, 255, 0.14);
-  color: #ffffff;
+  background: #ffffff;
+  color: #111111;
 }
 
 .soon-badge {
   padding: 3px 6px;
 
+  border: 1px solid var(--border);
   border-radius: 5px;
-  background: #f0f0ed;
-  color: #97978f;
+
+  background: #ffffff;
+  color: #999999;
 
   font-size: 7px;
   font-weight: 800;
@@ -241,23 +232,21 @@ a:focus-visible {
   gap: 10px;
 
   border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface-soft);
+  border-radius: 10px;
+  background: #ffffff;
 }
 
 .backend-icon {
-  width: 31px;
-  height: 31px;
-
-  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
 
   display: grid;
   place-items: center;
 
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: #55554f;
+  border-radius: 7px;
+
+  color: #555555;
 }
 
 .backend-card small,
@@ -287,33 +276,31 @@ a:focus-visible {
   display: inline-block;
 
   border-radius: 50%;
-  background: #9e9e97;
+  background: #999999;
 }
 
 .connection-dot.online {
-  background: #21a263;
-  box-shadow: 0 0 0 3px rgba(33, 162, 99, 0.12);
+  background: #1b9c60;
 }
 
 .connection-dot.offline {
   background: #d34f4f;
-  box-shadow: 0 0 0 3px rgba(211, 79, 79, 0.12);
 }
 
 .connection-dot.checking {
   animation: pulse 1s ease-in-out infinite;
 }
 
-/* Main layout */
+/* Main */
 
 .main-content {
   min-width: 0;
   margin-left: var(--sidebar-width);
-  padding: 28px 34px 24px;
+  padding: 32px 38px 24px;
 }
 
 .topbar {
-  max-width: 1400px;
+  max-width: 1180px;
   margin: 0 auto;
 
   display: flex;
@@ -323,8 +310,10 @@ a:focus-visible {
 }
 
 .page-label {
-  margin: 0 0 5px;
+  margin: 0 0 6px;
+
   color: var(--text-muted);
+
   font-size: 9px;
   font-weight: 700;
 }
@@ -332,7 +321,7 @@ a:focus-visible {
 .topbar h1 {
   margin: 0;
 
-  font-size: clamp(25px, 3vw, 31px);
+  font-size: clamp(28px, 3vw, 36px);
   line-height: 1.15;
   letter-spacing: -0.045em;
 }
@@ -352,8 +341,9 @@ a:focus-visible {
   gap: 7px;
 
   border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
+  border-radius: 8px;
+
+  background: #ffffff;
   color: var(--text-soft);
 
   font-size: 9px;
@@ -365,11 +355,11 @@ a:focus-visible {
   height: 6px;
 
   border-radius: 50%;
-  background: #a2a29b;
+  background: #999999;
 }
 
 .connection-pill.online > span {
-  background: #21a263;
+  background: #1b9c60;
 }
 
 .connection-pill.offline > span {
@@ -384,45 +374,39 @@ a:focus-visible {
   place-items: center;
 
   border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--surface);
-  color: #4e4e49;
+  border-radius: 8px;
+
+  background: #ffffff;
+  color: #333333;
 
   transition:
-    transform 150ms ease,
+    background 150ms ease,
     border-color 150ms ease;
 }
 
 .refresh-button:hover:not(:disabled) {
-  border-color: var(--border-dark);
-  transform: translateY(-1px);
+  border-color: #111111;
+  background: #fafafa;
 }
 
-/* Hero */
+/* Minimal white hero */
 
 .hero-section {
-  max-width: 1400px;
-  margin: 26px auto 0;
-  padding: 32px;
+  max-width: 1180px;
+  margin: 34px auto 0;
+  padding: 30px 0 34px;
 
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 28px;
+  gap: 32px;
 
-  border: 1px solid #1f1f1c;
-  border-radius: 18px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
 
-  background:
-    radial-gradient(
-      circle at 88% 20%,
-      rgba(255, 255, 255, 0.1),
-      transparent 28%
-    ),
-    #11110f;
-
-  color: #ffffff;
-  overflow: hidden;
+  background: #ffffff;
+  color: var(--text);
 }
 
 .hero-content {
@@ -431,33 +415,34 @@ a:focus-visible {
 
 .hero-eyebrow {
   display: inline-flex;
-  padding: 6px 9px;
 
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 999px;
+  padding: 0;
 
-  color: #bcbcb5;
+  border: 0;
+  border-radius: 0;
+
+  color: var(--text-muted);
 
   font-size: 8px;
-  font-weight: 750;
-  letter-spacing: 0.08em;
+  font-weight: 800;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .hero-section h2 {
-  max-width: 680px;
-  margin: 20px 0 0;
+  max-width: 700px;
+  margin: 16px 0 0;
 
-  font-size: clamp(36px, 5vw, 60px);
-  line-height: 0.98;
-  letter-spacing: -0.065em;
+  font-size: clamp(36px, 5vw, 58px);
+  line-height: 1;
+  letter-spacing: -0.06em;
 }
 
 .hero-section p {
   max-width: 610px;
   margin: 18px 0 0;
 
-  color: #aaa9a3;
+  color: var(--text-soft);
 
   font-size: 12px;
   line-height: 1.7;
@@ -472,11 +457,11 @@ a:focus-visible {
   justify-content: center;
   gap: 8px;
 
-  border: 1px solid #ffffff;
-  border-radius: 9px;
+  border: 1px solid #111111;
+  border-radius: 8px;
 
-  background: #ffffff;
-  color: var(--text);
+  background: #111111;
+  color: #ffffff;
 
   font-size: 10px;
   font-weight: 750;
@@ -484,20 +469,20 @@ a:focus-visible {
   white-space: nowrap;
 
   transition:
-    transform 150ms ease,
-    background 150ms ease;
+    background 150ms ease,
+    color 150ms ease;
 }
 
 .hero-button:hover {
-  background: #f0f0ec;
-  transform: translateY(-1px);
+  background: #ffffff;
+  color: #111111;
 }
 
-/* Statistics */
+/* Stats */
 
 .stats-grid {
-  max-width: 1400px;
-  margin: 14px auto 0;
+  max-width: 1180px;
+  margin: 22px auto 0;
 
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -506,11 +491,11 @@ a:focus-visible {
 
 .stat-card {
   min-width: 0;
-  padding: 19px;
+  padding: 20px;
 
   border: 1px solid var(--border);
-  border-radius: 13px;
-  background: var(--surface);
+  border-radius: 10px;
+  background: #ffffff;
 }
 
 .stat-header {
@@ -526,12 +511,12 @@ a:focus-visible {
 }
 
 .stat-header svg {
-  color: #888881;
+  color: #777777;
 }
 
 .stat-card > strong {
   display: block;
-  margin-top: 23px;
+  margin-top: 24px;
 
   font-size: 31px;
   line-height: 1;
@@ -544,13 +529,13 @@ a:focus-visible {
   color: var(--text-muted);
 
   font-size: 8px;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 /* Notices */
 
 .notice {
-  max-width: 1400px;
+  max-width: 1180px;
   min-height: 46px;
   margin: 14px auto 0;
   padding: 10px 12px;
@@ -560,7 +545,7 @@ a:focus-visible {
   gap: 10px;
 
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
 
   font-size: 10px;
 }
@@ -569,12 +554,10 @@ a:focus-visible {
   width: 26px;
   height: 26px;
 
-  flex: 0 0 auto;
-
   display: grid;
   place-items: center;
 
-  border-radius: 7px;
+  border-radius: 6px;
 }
 
 .notice p {
@@ -587,7 +570,7 @@ a:focus-visible {
   height: 28px;
 
   border: 0;
-  border-radius: 7px;
+  border-radius: 6px;
 
   background: transparent;
   color: inherit;
@@ -597,7 +580,7 @@ a:focus-visible {
 
 .notice-success {
   border-color: #cfe9da;
-  background: #f3fbf6;
+  background: #f6fcf8;
   color: var(--success);
 }
 
@@ -617,7 +600,7 @@ a:focus-visible {
 
 .notice-error {
   border-color: #efd0d0;
-  background: #fff7f7;
+  background: #fff8f8;
   color: var(--danger);
 }
 
@@ -628,9 +611,9 @@ a:focus-visible {
 /* Add domain */
 
 .add-domain-section {
-  max-width: 1400px;
+  max-width: 1180px;
   margin: 14px auto 0;
-  padding: 18px;
+  padding: 20px;
 
   display: flex;
   align-items: center;
@@ -638,8 +621,8 @@ a:focus-visible {
   gap: 24px;
 
   border: 1px solid var(--border);
-  border-radius: 13px;
-  background: var(--surface);
+  border-radius: 10px;
+  background: #ffffff;
 }
 
 .section-heading {
@@ -652,31 +635,30 @@ a:focus-visible {
   width: 38px;
   height: 38px;
 
-  flex: 0 0 auto;
-
   display: grid;
   place-items: center;
 
   border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface-soft);
+  border-radius: 8px;
+  background: #ffffff;
 }
 
 .section-heading h2 {
   margin: 0;
 
   font-size: 13px;
-  letter-spacing: -0.025em;
 }
 
 .section-heading p {
   margin: 4px 0 0;
+
   color: var(--text-muted);
   font-size: 8px;
 }
 
 .add-domain-form {
   width: min(100%, 520px);
+
   display: flex;
   gap: 8px;
 }
@@ -690,25 +672,19 @@ a:focus-visible {
   align-items: center;
 
   border: 1px solid var(--border-dark);
-  border-radius: 9px;
-  background: var(--surface-soft);
+  border-radius: 8px;
+  background: #ffffff;
   overflow: hidden;
-
-  transition:
-    border-color 150ms ease,
-    box-shadow 150ms ease,
-    background 150ms ease;
 }
 
 .domain-input:focus-within {
-  border-color: var(--text);
-  background: var(--surface);
-  box-shadow: 0 0 0 3px rgba(17, 17, 15, 0.07);
+  border-color: #111111;
 }
 
 .domain-input span {
   padding-left: 12px;
-  color: #a2a29b;
+
+  color: #999999;
   font-size: 9px;
 }
 
@@ -728,7 +704,7 @@ a:focus-visible {
 }
 
 .domain-input input::placeholder {
-  color: #b2b2ab;
+  color: #aaaaaa;
 }
 
 .add-domain-form > button {
@@ -741,39 +717,39 @@ a:focus-visible {
   justify-content: center;
   gap: 7px;
 
-  border: 1px solid var(--text);
-  border-radius: 9px;
+  border: 1px solid #111111;
+  border-radius: 8px;
 
-  background: var(--text);
+  background: #111111;
   color: #ffffff;
 
   font-size: 9px;
   font-weight: 750;
 
   transition:
-    transform 150ms ease,
-    background 150ms ease;
+    background 150ms ease,
+    color 150ms ease;
 }
 
 .add-domain-form > button:hover:not(:disabled) {
-  background: #292926;
-  transform: translateY(-1px);
+  background: #ffffff;
+  color: #111111;
 }
 
 .add-domain-form > button:disabled {
   opacity: 0.55;
 }
 
-/* Domains table */
+/* Domains */
 
 .domains-section {
-  max-width: 1400px;
+  max-width: 1180px;
   margin: 14px auto 0;
 
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 10px;
 
-  background: var(--surface);
+  background: #ffffff;
   overflow: hidden;
 }
 
@@ -792,11 +768,11 @@ a:focus-visible {
   margin: 0;
 
   font-size: 15px;
-  letter-spacing: -0.03em;
 }
 
 .domains-header p {
   margin: 5px 0 0;
+
   color: var(--text-muted);
   font-size: 8px;
 }
@@ -811,15 +787,14 @@ a:focus-visible {
   gap: 8px;
 
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 8px;
 
-  background: var(--surface-soft);
-  color: #8d8d86;
+  background: #ffffff;
+  color: #888888;
 }
 
 .search-field:focus-within {
-  border-color: var(--text);
-  background: var(--surface);
+  border-color: #111111;
 }
 
 .search-field input {
@@ -835,10 +810,6 @@ a:focus-visible {
   font-size: 9px;
 }
 
-.search-field input::placeholder {
-  color: #aaa9a3;
-}
-
 .table-wrapper {
   width: 100%;
   overflow-x: auto;
@@ -850,10 +821,12 @@ a:focus-visible {
 }
 
 .domains-table th {
-  padding: 11px 17px;
+  padding: 12px 17px;
 
-  background: var(--surface-soft);
-  color: #999992;
+  border-bottom: 1px solid var(--border);
+
+  background: #fafafa;
+  color: #888888;
 
   font-size: 7px;
   font-weight: 800;
@@ -864,20 +837,16 @@ a:focus-visible {
 }
 
 .domains-table td {
-  padding: 15px 17px;
+  padding: 16px 17px;
 
-  border-top: 1px solid #eeeeea;
+  border-top: 1px solid #eeeeee;
 
   vertical-align: middle;
   font-size: 9px;
 }
 
-.domains-table tbody tr {
-  transition: background 130ms ease;
-}
-
 .domains-table tbody tr:hover {
-  background: #fdfdfb;
+  background: #fcfcfc;
 }
 
 .domain-details {
@@ -892,16 +861,14 @@ a:focus-visible {
   width: 35px;
   height: 35px;
 
-  flex: 0 0 auto;
-
   display: grid;
   place-items: center;
 
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 8px;
 
-  background: var(--surface-soft);
-  color: #41413c;
+  background: #ffffff;
+  color: #111111;
 
   font-size: 11px;
   font-weight: 800;
@@ -919,6 +886,7 @@ a:focus-visible {
 
 .domain-details small {
   margin-top: 4px;
+
   color: var(--text-muted);
   font-size: 7px;
 }
@@ -931,6 +899,7 @@ a:focus-visible {
   align-items: center;
   gap: 6px;
 
+  border: 1px solid transparent;
   border-radius: 999px;
 
   font-size: 7px;
@@ -941,10 +910,12 @@ a:focus-visible {
 .status-badge > span {
   width: 5px;
   height: 5px;
+
   border-radius: 50%;
 }
 
 .status-healthy {
+  border-color: #cfe9da;
   background: var(--success-background);
   color: var(--success);
 }
@@ -954,6 +925,7 @@ a:focus-visible {
 }
 
 .status-changed {
+  border-color: #f0debb;
   background: var(--warning-background);
   color: var(--warning);
 }
@@ -963,26 +935,29 @@ a:focus-visible {
 }
 
 .status-pending {
-  background: #f0f0ed;
-  color: #73736d;
+  border-color: var(--border);
+  background: #ffffff;
+  color: #666666;
 }
 
 .status-pending > span {
-  background: #9e9e97;
+  background: #999999;
 }
 
 .status-checking {
-  background: #eef3ff;
-  color: #4767a8;
+  border-color: var(--border);
+  background: #ffffff;
+  color: #555555;
 }
 
 .status-checking > span {
-  background: #6b86c0;
+  background: #555555;
   animation: pulse 0.8s ease-in-out infinite;
 }
 
 .nameserver-list {
   min-width: 180px;
+
   display: grid;
   gap: 4px;
 }
@@ -992,9 +967,11 @@ a:focus-visible {
   max-width: 240px;
   padding: 3px 6px;
 
+  border: 1px solid var(--border);
   border-radius: 5px;
-  background: #f1f1ee;
-  color: #55554f;
+
+  background: #ffffff;
+  color: #555555;
 
   font-family:
     ui-monospace,
@@ -1036,11 +1013,11 @@ a:focus-visible {
   justify-content: center;
   gap: 6px;
 
-  border: 1px solid var(--border-dark);
-  border-radius: 8px;
+  border: 1px solid #111111;
+  border-radius: 7px;
 
-  background: var(--surface);
-  color: #4b4b46;
+  background: #ffffff;
+  color: #111111;
 
   font-size: 8px;
   font-weight: 750;
@@ -1048,13 +1025,11 @@ a:focus-visible {
 
   transition:
     background 150ms ease,
-    border-color 150ms ease,
     color 150ms ease;
 }
 
 .action-cell button:hover:not(:disabled) {
-  border-color: var(--text);
-  background: var(--text);
+  background: #111111;
   color: #ffffff;
 }
 
@@ -1065,7 +1040,7 @@ a:focus-visible {
 /* Empty state */
 
 .empty-state {
-  min-height: 290px;
+  min-height: 280px;
   padding: 48px 20px;
 
   display: flex;
@@ -1084,14 +1059,15 @@ a:focus-visible {
   place-items: center;
 
   border: 1px solid var(--border);
-  border-radius: 13px;
+  border-radius: 10px;
 
-  background: var(--surface-soft);
-  color: #676761;
+  background: #ffffff;
+  color: #555555;
 }
 
 .empty-state h3 {
   margin: 15px 0 0;
+
   font-size: 12px;
 }
 
@@ -1108,9 +1084,9 @@ a:focus-visible {
 /* Footer */
 
 .footer {
-  max-width: 1400px;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 19px 2px 0;
+  padding: 20px 2px 0;
 
   display: flex;
   align-items: center;
@@ -1179,7 +1155,7 @@ a:focus-visible {
   }
 }
 
-/* Mobile navigation */
+/* Mobile */
 
 @media (max-width: 800px) {
   :root {
@@ -1201,10 +1177,6 @@ a:focus-visible {
     border-bottom: 1px solid var(--border);
   }
 
-  .brand {
-    padding: 0;
-  }
-
   .brand-text small,
   .sidebar-nav,
   .backend-card {
@@ -1213,7 +1185,7 @@ a:focus-visible {
 
   .main-content {
     margin-left: 0;
-    padding: 22px 18px 24px;
+    padding: 24px 18px;
   }
 
   .connection-pill {
@@ -1221,20 +1193,18 @@ a:focus-visible {
   }
 }
 
-/* Small mobile */
-
 @media (max-width: 640px) {
   .main-content {
     padding-inline: 13px;
   }
 
   .topbar h1 {
-    font-size: 24px;
+    font-size: 26px;
   }
 
   .hero-section {
-    padding: 24px 20px;
-    border-radius: 15px;
+    margin-top: 24px;
+    padding: 24px 0 28px;
   }
 
   .hero-section h2 {
@@ -1305,7 +1275,7 @@ a:focus-visible {
     padding: 13px;
 
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 10px;
   }
 
   .domains-table td {
@@ -1316,7 +1286,7 @@ a:focus-visible {
     justify-content: space-between;
     gap: 20px;
 
-    border-top: 1px solid #eeeeea;
+    border-top: 1px solid #eeeeee;
     text-align: right;
   }
 
