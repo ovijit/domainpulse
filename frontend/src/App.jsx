@@ -1,122 +1,9 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import {
-  GoogleLogin,
-  GoogleOAuthProvider,
-  googleLogout,
-} from "@react-oauth/google";
+import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
 const API_URL = (
-  import.meta.env.VITE_API_URL ||
-  "https://domainpulse.onrender.com"
+  import.meta.env.VITE_API_URL || "http://localhost:5001"
 ).replace(/\/$/, "");
-
-const GOOGLE_CLIENT_ID =
-  import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
-
-const icons = {
-  dashboard: (
-    <>
-      <rect x="3" y="3" width="7" height="7" rx="2" />
-      <rect x="14" y="3" width="7" height="7" rx="2" />
-      <rect x="3" y="14" width="7" height="7" rx="2" />
-      <rect x="14" y="14" width="7" height="7" rx="2" />
-    </>
-  ),
-
-  globe: (
-    <>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M3 12h18" />
-      <path d="M12 3a14 14 0 0 1 0 18" />
-      <path d="M12 3a14 14 0 0 0 0 18" />
-    </>
-  ),
-
-  history: (
-    <>
-      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-      <path d="M3 3v5h5" />
-      <path d="M12 7v5l3 2" />
-    </>
-  ),
-
-  bell: (
-    <>
-      <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-      <path d="M10 21h4" />
-    </>
-  ),
-
-  server: (
-    <>
-      <rect x="3" y="4" width="18" height="6" rx="2" />
-      <rect x="3" y="14" width="18" height="6" rx="2" />
-      <path d="M7 7h.01" />
-      <path d="M7 17h.01" />
-    </>
-  ),
-
-  search: (
-    <>
-      <circle cx="11" cy="11" r="7" />
-      <path d="m20 20-4-4" />
-    </>
-  ),
-
-  plus: <path d="M12 5v14M5 12h14" />,
-
-  refresh: (
-    <>
-      <path d="M20 6v5h-5" />
-      <path d="M4 18v-5h5" />
-      <path d="M5.8 9a7 7 0 0 1 11.5-2.6L20 9" />
-      <path d="M4 15l2.7 2.6A7 7 0 0 0 18.2 15" />
-    </>
-  ),
-
-  check: <path d="m5 12 4 4L19 6" />,
-
-  warning: (
-    <>
-      <path d="M10.3 3.6 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z" />
-      <path d="M12 9v4" />
-      <path d="M12 17h.01" />
-    </>
-  ),
-
-  external: (
-    <>
-      <path d="M15 3h6v6" />
-      <path d="M10 14 21 3" />
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-    </>
-  ),
-};
-
-function Icon({ name, size = 18, className = "" }) {
-  return (
-    <svg
-      className={className}
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {icons[name]}
-    </svg>
-  );
-}
 
 function normalizeDomain(value) {
   return value
@@ -124,979 +11,647 @@ function normalizeDomain(value) {
     .toLowerCase()
     .replace(/^https?:\/\//, "")
     .replace(/^www\./, "")
-    .split(/[/?#]/)[0]
-    .replace(/\.$/, "");
+    .split("/")[0]
+    .split("?")[0];
 }
 
-function isValidDomain(domain) {
-  return (
-    domain.length > 3 &&
-    domain.length <= 253 &&
-    domain.includes(".") &&
-    !domain.includes(" ") &&
-    !domain.startsWith(".") &&
-    !domain.endsWith(".")
-  );
-}
-
-function formatDate(value) {
-  if (!value) {
-    return "Not checked";
+function getDomainName(domainItem) {
+  if (typeof domainItem === "string") {
+    return domainItem;
   }
 
-  const date = new Date(value);
+  return domainItem.domain || domainItem.name || "";
+}
+
+function getNameservers(domainItem) {
+  if (!domainItem || typeof domainItem === "string") {
+    return [];
+  }
+
+  return Array.isArray(domainItem.nameservers)
+    ? domainItem.nameservers
+    : [];
+}
+
+function formatDate(dateValue) {
+  if (!dateValue) {
+    return "Not checked yet";
+  }
+
+  const date = new Date(dateValue);
 
   if (Number.isNaN(date.getTime())) {
-    return "Not checked";
+    return "Not checked yet";
   }
 
   return new Intl.DateTimeFormat("en-IN", {
     day: "numeric",
     month: "short",
     year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
   }).format(date);
 }
 
-function decodeGoogleToken(token) {
-  try {
-    const payload = token.split(".")[1];
-
-    if (!payload) {
-      throw new Error("Invalid Google token.");
-    }
-
-    const normalizedPayload = payload
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
-
-    const decodedPayload = decodeURIComponent(
-      window
-        .atob(normalizedPayload)
-        .split("")
-        .map(
-          (character) =>
-            `%${character
-              .charCodeAt(0)
-              .toString(16)
-              .padStart(2, "0")}`
-        )
-        .join("")
-    );
-
-    return JSON.parse(decodedPayload);
-  } catch (error) {
-    console.error("Google token decoding failed:", error);
-    return null;
-  }
-}
-
-function DomainPulseApp() {
+function App() {
   const [domains, setDomains] = useState([]);
-  const [domainInput, setDomainInput] = useState("");
+  const [domain, setDomain] = useState("");
   const [search, setSearch] = useState("");
-
+  const [backendConnected, setBackendConnected] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [addingDomain, setAddingDomain] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const [backendConnected, setBackendConnected] = useState(null);
-  const [checkingDomains, setCheckingDomains] = useState({});
+  const [adding, setAdding] = useState(false);
+  const [checkingDomain, setCheckingDomain] = useState("");
+  const [checkingAll, setCheckingAll] = useState(false);
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("");
   const [checkResults, setCheckResults] = useState({});
 
-  const [notice, setNotice] = useState(null);
-
-  const [user, setUser] = useState(() => {
-    try {
-      const savedUser = localStorage.getItem(
-        "domainpulse-user"
-      );
-
-      return savedUser ? JSON.parse(savedUser) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  const showNotice = useCallback((type, message) => {
-    setNotice({ type, message });
-  }, []);
-
-  const loadDomains = useCallback(
-    async ({ silent = false } = {}) => {
-      if (silent) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-
-      try {
-        const response = await fetch(
-          `${API_URL}/api/domains`
-        );
-
-        const responseText = await response.text();
-
-        let data = [];
-
-        try {
-          data = responseText
-            ? JSON.parse(responseText)
-            : [];
-        } catch {
-          data = [];
-        }
-
-        if (!response.ok) {
-          throw new Error(
-            data.message ||
-              data.error ||
-              responseText ||
-              "Could not load domains."
-          );
-        }
-
-        setDomains(Array.isArray(data) ? data : []);
-        setBackendConnected(true);
-      } catch (error) {
-        console.error("Domain loading error:", error);
-
-        setBackendConnected(false);
-
-        showNotice(
-          "error",
-          "Backend is not connected. Check VITE_API_URL or wake the Render service."
-        );
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [showNotice]
-  );
-
-  useEffect(() => {
-    loadDomains();
-  }, [loadDomains]);
-
   const filteredDomains = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const keyword = search.trim().toLowerCase();
 
-    if (!query) {
+    if (!keyword) {
       return domains;
     }
 
     return domains.filter((item) =>
-      String(item.domain || "")
-        .toLowerCase()
-        .includes(query)
+      getDomainName(item).toLowerCase().includes(keyword)
     );
   }, [domains, search]);
 
-  const checkedCount = Object.keys(checkResults).length;
+  const domainCount = domains.length;
 
-  const healthyCount = Object.values(checkResults).filter(
-    (result) => result.changed === false
-  ).length;
+  const monitoredNameserverCount = useMemo(() => {
+    const nameservers = new Set();
 
-  const changedCount = Object.values(checkResults).filter(
-    (result) => result.changed === true
-  ).length;
+    domains.forEach((item) => {
+      getNameservers(item).forEach((nameserver) => {
+        nameservers.add(nameserver);
+      });
+    });
 
-  const handleGoogleSuccess = (credentialResponse) => {
-    if (!credentialResponse.credential) {
-      showNotice(
-        "error",
-        "Google did not return a valid sign-in credential."
-      );
-      return;
+    return nameservers.size;
+  }, [domains]);
+
+  const changedDomainsCount = useMemo(
+    () =>
+      Object.values(checkResults).filter(
+        (result) => result?.changed === true
+      ).length,
+    [checkResults]
+  );
+
+  function showMessage(text, type = "success") {
+    setMessage(text);
+    setMessageType(type);
+
+    window.clearTimeout(showMessage.timeout);
+
+    showMessage.timeout = window.setTimeout(() => {
+      setMessage("");
+      setMessageType("");
+    }, 4500);
+  }
+
+  async function loadDomains(showLoader = true) {
+    try {
+      if (showLoader) {
+        setLoading(true);
+      }
+
+      const response = await fetch(`${API_URL}/api/domains`);
+
+      if (!response.ok) {
+        throw new Error("Could not load domains.");
+      }
+
+      const data = await response.json();
+
+      const domainList = Array.isArray(data)
+        ? data
+        : Array.isArray(data.domains)
+        ? data.domains
+        : [];
+
+      setDomains(domainList);
+      setBackendConnected(true);
+    } catch (error) {
+      console.error("Load domains error:", error);
+      setBackendConnected(false);
+
+      if (showLoader) {
+        showMessage(
+          "Backend is not connected. Check VITE_API_URL or start the backend.",
+          "error"
+        );
+      }
+    } finally {
+      if (showLoader) {
+        setLoading(false);
+      }
     }
+  }
 
-    const profile = decodeGoogleToken(
-      credentialResponse.credential
-    );
+  useEffect(() => {
+    loadDomains();
+  }, []);
 
-    if (!profile) {
-      showNotice(
-        "error",
-        "Google Sign-In could not be completed."
-      );
-      return;
-    }
-
-    const signedInUser = {
-      id: profile.sub,
-      name: profile.name || "Google user",
-      givenName: profile.given_name || "",
-      email: profile.email || "",
-      picture: profile.picture || "",
-    };
-
-    setUser(signedInUser);
-
-    localStorage.setItem(
-      "domainpulse-user",
-      JSON.stringify(signedInUser)
-    );
-
-    showNotice(
-      "success",
-      `Welcome, ${
-        signedInUser.givenName || signedInUser.name
-      }.`
-    );
-  };
-
-  const handleGoogleError = () => {
-    showNotice(
-      "error",
-      "Google Sign-In failed. Check your Client ID and authorized origins."
-    );
-  };
-
-  const handleSignOut = () => {
-    googleLogout();
-
-    localStorage.removeItem("domainpulse-user");
-    setUser(null);
-
-    showNotice(
-      "success",
-      "You have successfully signed out."
-    );
-  };
-
-  const handleAddDomain = async (event) => {
+  async function addDomain(event) {
     event.preventDefault();
 
-    const cleanDomain = normalizeDomain(domainInput);
+    const cleanDomain = normalizeDomain(domain);
 
-    if (!isValidDomain(cleanDomain)) {
-      showNotice(
-        "error",
-        "Enter a valid domain, for example bitzen.com."
-      );
+    if (!cleanDomain || !cleanDomain.includes(".")) {
+      showMessage("Enter a valid domain such as example.com.", "error");
       return;
     }
 
     const alreadyExists = domains.some(
-      (item) =>
-        item.domain?.toLowerCase() === cleanDomain
+      (item) => getDomainName(item) === cleanDomain
     );
 
     if (alreadyExists) {
-      showNotice(
-        "error",
-        `${cleanDomain} is already in your portfolio.`
-      );
+      showMessage("This domain is already being monitored.", "error");
       return;
     }
 
-    setAddingDomain(true);
-    setNotice(null);
-
     try {
-      const response = await fetch(
-        `${API_URL}/api/domains`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            domain: cleanDomain,
-          }),
-        }
-      );
+      setAdding(true);
 
-      const responseText = await response.text();
+      const response = await fetch(`${API_URL}/api/domains`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          domain: cleanDomain,
+        }),
+      });
 
-      let data = {};
-
-      try {
-        data = responseText
-          ? JSON.parse(responseText)
-          : {};
-      } catch {
-        data = {};
-      }
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(
-          data.message ||
-            data.error ||
-            responseText ||
-            `Failed to add domain. Server returned ${response.status}.`
-        );
+        throw new Error(data.error || data.message || "Could not add domain.");
       }
 
-      setDomainInput("");
+      setDomain("");
       setBackendConnected(true);
-
-      await loadDomains({ silent: true });
-
-      showNotice(
-        "success",
-        `${cleanDomain} is now being monitored.`
-      );
+      showMessage(`${cleanDomain} was added successfully.`);
+      await loadDomains(false);
     } catch (error) {
-      console.error("Domain creation error:", error);
-
-      showNotice(
-        "error",
-        error.message || "Could not add this domain."
-      );
+      console.error("Add domain error:", error);
+      showMessage(error.message || "Could not add the domain.", "error");
     } finally {
-      setAddingDomain(false);
+      setAdding(false);
     }
-  };
+  }
 
-  const handleCheckDomain = async (domainName) => {
-    setCheckingDomains((current) => ({
-      ...current,
-      [domainName]: true,
-    }));
-
-    setNotice(null);
-
+  async function checkDomain(domainName, silent = false) {
     try {
+      setCheckingDomain(domainName);
+
       const response = await fetch(
-        `${API_URL}/api/check/${encodeURIComponent(
-          domainName
-        )}`,
+        `${API_URL}/api/check/${encodeURIComponent(domainName)}`,
         {
           method: "POST",
         }
       );
 
-      const responseText = await response.text();
-
-      let data = {};
-
-      try {
-        data = responseText
-          ? JSON.parse(responseText)
-          : {};
-      } catch {
-        data = {};
-      }
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(
-          data.message ||
-            data.error ||
-            responseText ||
-            `Could not check ${domainName}.`
+          data.error || data.message || `Could not check ${domainName}.`
         );
       }
 
-      const nameservers = Array.isArray(data.nameservers)
-        ? data.nameservers
-        : Array.isArray(data.nameServers)
-          ? data.nameServers
-          : [];
-
-      const result = {
-        nameservers,
-        changed: Boolean(data.changed),
-        checkedAt: new Date().toISOString(),
-      };
-
-      setCheckResults((current) => ({
-        ...current,
-        [domainName]: result,
-      }));
-
       setBackendConnected(true);
 
-      showNotice(
-        result.changed ? "warning" : "success",
-        result.changed
-          ? `Nameserver change detected for ${domainName}.`
-          : `${domainName} is healthy and unchanged.`
-      );
-    } catch (error) {
-      console.error("Domain check error:", error);
-
-      showNotice(
-        "error",
-        error.message ||
-          `Could not check ${domainName}.`
-      );
-    } finally {
-      setCheckingDomains((current) => ({
-        ...current,
-        [domainName]: false,
+      setCheckResults((currentResults) => ({
+        ...currentResults,
+        [domainName]: {
+          nameservers: Array.isArray(data.nameservers)
+            ? data.nameservers
+            : [],
+          changed: Boolean(data.changed),
+          checkedAt: new Date().toISOString(),
+        },
       }));
+
+      setDomains((currentDomains) =>
+        currentDomains.map((item) => {
+          if (getDomainName(item) !== domainName) {
+            return item;
+          }
+
+          if (typeof item === "string") {
+            return {
+              domain: item,
+              nameservers: Array.isArray(data.nameservers)
+                ? data.nameservers
+                : [],
+            };
+          }
+
+          return {
+            ...item,
+            nameservers: Array.isArray(data.nameservers)
+              ? data.nameservers
+              : item.nameservers,
+            updated_at: new Date().toISOString(),
+          };
+        })
+      );
+
+      if (!silent) {
+        showMessage(
+          data.changed
+            ? `${domainName} nameservers have changed.`
+            : `${domainName} is up to date.`,
+          data.changed ? "warning" : "success"
+        );
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Check domain error:", error);
+
+      if (!silent) {
+        showMessage(error.message || "Nameserver check failed.", "error");
+      }
+
+      return null;
+    } finally {
+      setCheckingDomain("");
     }
-  };
+  }
+
+  async function checkAllDomains() {
+    if (domains.length === 0) {
+      showMessage("Add a domain before running a check.", "error");
+      return;
+    }
+
+    try {
+      setCheckingAll(true);
+
+      let successfulChecks = 0;
+      let changedChecks = 0;
+
+      for (const item of domains) {
+        const domainName = getDomainName(item);
+
+        if (!domainName) {
+          continue;
+        }
+
+        const result = await checkDomain(domainName, true);
+
+        if (result) {
+          successfulChecks += 1;
+
+          if (result.changed) {
+            changedChecks += 1;
+          }
+        }
+      }
+
+      if (successfulChecks === 0) {
+        showMessage("Domain checks could not be completed.", "error");
+      } else if (changedChecks > 0) {
+        showMessage(
+          `${successfulChecks} domains checked. ${changedChecks} change${
+            changedChecks === 1 ? "" : "s"
+          } detected.`,
+          "warning"
+        );
+      } else {
+        showMessage(`${successfulChecks} domains checked. No changes detected.`);
+      }
+    } finally {
+      setCheckingAll(false);
+      setCheckingDomain("");
+    }
+  }
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div>
-          <a className="brand" href="#top">
-            <span className="brand-logo">DP</span>
+          <a className="brand" href="/">
+            <span className="brand-mark">D</span>
 
-            <span className="brand-text">
+            <span>
               <strong>DomainPulse</strong>
-              <small>Nameserver monitoring</small>
+              <small>Domain monitoring</small>
             </span>
           </a>
 
-          <nav
-            className="sidebar-nav"
-            aria-label="Main navigation"
-          >
-            <button
-              className="nav-item active"
-              type="button"
-            >
-              <Icon name="dashboard" />
-              <span>Overview</span>
+          <nav className="navigation">
+            <button className="nav-item nav-item-active" type="button">
+              <span className="nav-icon">⌂</span>
+              Dashboard
             </button>
 
-            <button
-              className="nav-item"
-              type="button"
-            >
-              <Icon name="globe" />
-              <span>Domains</span>
-
-              <span className="nav-count">
-                {domains.length}
-              </span>
+            <button className="nav-item" type="button">
+              <span className="nav-icon">◉</span>
+              Domains
+              <span className="nav-count">{domainCount}</span>
             </button>
 
-            <button
-              className="nav-item"
-              type="button"
-              disabled
-            >
-              <Icon name="history" />
-              <span>History</span>
-              <span className="soon-badge">Soon</span>
-            </button>
-
-            <button
-              className="nav-item"
-              type="button"
-              disabled
-            >
-              <Icon name="bell" />
-              <span>Alerts</span>
-              <span className="soon-badge">Soon</span>
+            <button className="nav-item" type="button">
+              <span className="nav-icon">↗</span>
+              Activity
             </button>
           </nav>
         </div>
 
-        <div className="backend-card">
-          <span className="backend-icon">
-            <Icon name="server" size={17} />
-          </span>
+        <div className="sidebar-footer">
+          <div className="connection-card">
+            <span
+              className={`connection-dot ${
+                backendConnected ? "connection-online" : "connection-offline"
+              }`}
+            />
 
-          <div>
-            <small>Monitoring API</small>
-
-            <strong>
-              <span
-                className={`connection-dot ${
-                  backendConnected === true
-                    ? "online"
-                    : backendConnected === false
-                      ? "offline"
-                      : "checking"
-                }`}
-              />
-
-              {backendConnected === true
-                ? "Connected"
-                : backendConnected === false
-                  ? "Disconnected"
-                  : "Connecting"}
-            </strong>
+            <div>
+              <strong>
+                {backendConnected ? "Backend online" : "Backend offline"}
+              </strong>
+              <small>
+                {backendConnected
+                  ? "Monitoring service connected"
+                  : "Check your API configuration"}
+              </small>
+            </div>
           </div>
+
+          <p>DomainPulse v1.0</p>
         </div>
       </aside>
 
-      <main className="main-content" id="top">
+      <main className="main-content">
         <header className="topbar">
           <div>
-            <p className="page-label">
-              Workspace / Overview
-            </p>
-
-            <h1>Domain portfolio</h1>
+            <p className="eyebrow">Overview</p>
+            <h1>Domain dashboard</h1>
           </div>
 
-          <div className="topbar-actions">
-            {GOOGLE_CLIENT_ID ? (
-              user ? (
-                <div className="user-menu">
-                  {user.picture ? (
-                    <img
-                      src={user.picture}
-                      alt={user.name}
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <span className="user-avatar">
-                      {user.name
-                        ?.charAt(0)
-                        .toUpperCase()}
-                    </span>
-                  )}
-
-                  <div className="user-information">
-                    <strong>{user.name}</strong>
-                    <small>{user.email}</small>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="sign-out-button"
-                    onClick={handleSignOut}
-                  >
-                    Sign out
-                  </button>
-                </div>
-              ) : (
-                <div className="google-login-wrapper">
-                  <GoogleLogin
-                    onSuccess={handleGoogleSuccess}
-                    onError={handleGoogleError}
-                    theme="outline"
-                    size="large"
-                    shape="rectangular"
-                    text="signin_with"
-                  />
-                </div>
-              )
-            ) : (
-              <span className="google-config-error">
-                Google Client ID missing
-              </span>
-            )}
-
-            <span
-              className={`connection-pill ${
-                backendConnected === true
-                  ? "online"
-                  : "offline"
-              }`}
-            >
-              <span />
-
-              {backendConnected === true
-                ? "Live monitoring"
-                : "API offline"}
-            </span>
-
-            <button
-              className="refresh-button"
-              type="button"
-              onClick={() =>
-                loadDomains({ silent: true })
-              }
-              disabled={refreshing}
-              aria-label="Refresh domains"
-            >
-              <Icon
-                name="refresh"
-                className={
-                  refreshing ? "spinning" : ""
-                }
-              />
-            </button>
-          </div>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={checkAllDomains}
+            disabled={checkingAll || domains.length === 0}
+          >
+            <span className={checkingAll ? "spin" : ""}>↻</span>
+            {checkingAll ? "Checking domains" : "Check all domains"}
+          </button>
         </header>
 
-        <section className="hero-section">
-          <div className="hero-content">
-            <span className="hero-eyebrow">
-              Domain intelligence
+        {message && (
+          <div className={`alert alert-${messageType}`} role="alert">
+            <span className="alert-symbol">
+              {messageType === "error"
+                ? "!"
+                : messageType === "warning"
+                ? "↯"
+                : "✓"}
             </span>
 
-            <h2>
-              Monitor every domain from one dashboard.
-            </h2>
-
-            <p>
-              Detect nameserver changes, check domain
-              health and keep your complete portfolio
-              organized.
-            </p>
-          </div>
-
-          <a
-            className="hero-button"
-            href="#add-domain"
-          >
-            <Icon name="plus" size={17} />
-            Add domain
-          </a>
-        </section>
-
-        <section className="stats-grid">
-          <article className="stat-card">
-            <div className="stat-header">
-              <span>Total domains</span>
-              <Icon name="globe" />
-            </div>
-
-            <strong>{domains.length}</strong>
-            <p>Domains in your portfolio</p>
-          </article>
-
-          <article className="stat-card">
-            <div className="stat-header">
-              <span>Checked</span>
-              <Icon name="check" />
-            </div>
-
-            <strong>{checkedCount}</strong>
-            <p>Checked during this session</p>
-          </article>
-
-          <article className="stat-card">
-            <div className="stat-header">
-              <span>Healthy</span>
-              <Icon name="server" />
-            </div>
-
-            <strong>{healthyCount}</strong>
-            <p>No nameserver change detected</p>
-          </article>
-
-          <article className="stat-card">
-            <div className="stat-header">
-              <span>Changes</span>
-              <Icon name="warning" />
-            </div>
-
-            <strong>{changedCount}</strong>
-            <p>Nameserver changes detected</p>
-          </article>
-        </section>
-
-        {notice && (
-          <div
-            className={`notice notice-${notice.type}`}
-            role="status"
-          >
-            <span className="notice-symbol">
-              <Icon
-                name={
-                  notice.type === "error" ||
-                  notice.type === "warning"
-                    ? "warning"
-                    : "check"
-                }
-                size={16}
-              />
-            </span>
-
-            <p>{notice.message}</p>
+            <span>{message}</span>
 
             <button
               type="button"
-              onClick={() => setNotice(null)}
-              aria-label="Dismiss notification"
+              aria-label="Close notification"
+              onClick={() => setMessage("")}
             >
               ×
             </button>
           </div>
         )}
 
-        <section
-          className="add-domain-section"
-          id="add-domain"
-        >
-          <div className="section-heading">
-            <span className="section-heading-icon">
-              <Icon name="plus" />
-            </span>
-
-            <div>
-              <h2>Add a domain</h2>
-              <p>Start monitoring another domain.</p>
+        <section className="stats-grid">
+          <article className="stat-card">
+            <div className="stat-card-header">
+              <span>Total domains</span>
+              <span className="stat-icon">◉</span>
             </div>
+
+            <strong>{domainCount}</strong>
+            <p>Domains currently monitored</p>
+          </article>
+
+          <article className="stat-card">
+            <div className="stat-card-header">
+              <span>Nameservers</span>
+              <span className="stat-icon">⌘</span>
+            </div>
+
+            <strong>{monitoredNameserverCount}</strong>
+            <p>Unique nameservers detected</p>
+          </article>
+
+          <article className="stat-card">
+            <div className="stat-card-header">
+              <span>Changes detected</span>
+              <span className="stat-icon">↯</span>
+            </div>
+
+            <strong>{changedDomainsCount}</strong>
+            <p>Changes from this session</p>
+          </article>
+
+          <article className="stat-card">
+            <div className="stat-card-header">
+              <span>Service status</span>
+              <span className="stat-icon">●</span>
+            </div>
+
+            <strong className="status-stat">
+              {backendConnected ? "Online" : "Offline"}
+            </strong>
+            <p>
+              {backendConnected
+                ? "API connection is healthy"
+                : "Backend connection unavailable"}
+            </p>
+          </article>
+        </section>
+
+        <section className="add-domain-section">
+          <div>
+            <p className="section-label">Add monitoring</p>
+            <h2>Monitor a new domain</h2>
+            <p>
+              Add a domain and DomainPulse will monitor its authoritative
+              nameservers.
+            </p>
           </div>
 
-          <form
-            className="add-domain-form"
-            onSubmit={handleAddDomain}
-          >
-            <div className="domain-input">
+          <form className="domain-form" onSubmit={addDomain}>
+            <div className="domain-input-wrapper">
               <span>https://</span>
 
               <input
                 type="text"
-                placeholder="yourdomain.com"
-                value={domainInput}
-                onChange={(event) =>
-                  setDomainInput(event.target.value)
-                }
-                disabled={addingDomain}
-                autoComplete="off"
+                value={domain}
+                onChange={(event) => setDomain(event.target.value)}
+                placeholder="example.com"
+                aria-label="Domain name"
+                disabled={adding}
               />
             </div>
 
             <button
+              className="primary-button"
               type="submit"
-              disabled={addingDomain}
+              disabled={adding}
             >
-              {addingDomain
-                ? "Adding..."
-                : "Add domain"}
-
-              {!addingDomain && (
-                <Icon name="plus" size={16} />
-              )}
+              {adding ? "Adding domain..." : "Add domain"}
             </button>
           </form>
         </section>
 
         <section className="domains-section">
-          <div className="domains-header">
+          <div className="section-header">
             <div>
+              <p className="section-label">Portfolio</p>
               <h2>Monitored domains</h2>
-              <p>
-                Nameserver status across your portfolio.
-              </p>
             </div>
 
-            <div className="search-field">
-              <Icon name="search" size={17} />
+            <div className="search-wrapper">
+              <span>⌕</span>
 
               <input
                 type="search"
-                placeholder="Search domains"
                 value={search}
-                onChange={(event) =>
-                  setSearch(event.target.value)
-                }
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search domains"
+                aria-label="Search monitored domains"
               />
             </div>
           </div>
 
           {loading ? (
-            <div className="empty-state">
-              <span className="empty-icon">
-                <Icon
-                  name="refresh"
-                  className="spinning"
-                />
-              </span>
-
-              <h3>Loading your domains</h3>
-              <p>
-                Connecting to the DomainPulse backend.
-              </p>
+            <div className="loading-state">
+              <span className="loader" />
+              <p>Loading your domains...</p>
             </div>
           ) : filteredDomains.length === 0 ? (
             <div className="empty-state">
-              <span className="empty-icon">
-                <Icon
-                  name={search ? "search" : "globe"}
-                />
-              </span>
+              <div className="empty-icon">◎</div>
 
               <h3>
-                {search
-                  ? "No matching domains"
-                  : "No domains added yet"}
+                {search ? "No matching domains" : "No domains monitored yet"}
               </h3>
 
               <p>
                 {search
-                  ? "Try searching with a different domain."
-                  : "Add your first domain to begin monitoring it."}
+                  ? "Try searching with a different domain name."
+                  : "Add your first domain to begin monitoring nameservers."}
               </p>
             </div>
           ) : (
-            <div className="table-wrapper">
-              <table className="domains-table">
-                <thead>
-                  <tr>
-                    <th>Domain</th>
-                    <th>Status</th>
-                    <th>Nameservers</th>
-                    <th>Last checked</th>
-                    <th aria-label="Actions" />
-                  </tr>
-                </thead>
+            <div className="domain-list">
+              <div className="domain-list-heading">
+                <span>Domain</span>
+                <span>Nameservers</span>
+                <span>Last checked</span>
+                <span>Status</span>
+                <span />
+              </div>
 
-                <tbody>
-                  {filteredDomains.map((item) => {
-                    const domainName = item.domain;
-                    const result =
-                      checkResults[domainName];
+              {filteredDomains.map((item, index) => {
+                const domainName = getDomainName(item);
+                const checkResult = checkResults[domainName];
 
-                    const isChecking = Boolean(
-                      checkingDomains[domainName]
-                    );
+                const nameservers =
+                  checkResult?.nameservers || getNameservers(item);
 
-                    const nameservers =
-                      result?.nameservers || [];
+                const checkedAt =
+                  checkResult?.checkedAt ||
+                  item.updated_at ||
+                  item.checked_at ||
+                  item.created_at;
 
-                    let status = "pending";
-                    let statusText = "Not checked";
+                const isChecking = checkingDomain === domainName;
+                const hasChanged = checkResult?.changed === true;
 
-                    if (isChecking) {
-                      status = "checking";
-                      statusText = "Checking";
-                    } else if (result?.changed) {
-                      status = "changed";
-                      statusText = "Changed";
-                    } else if (result) {
-                      status = "healthy";
-                      statusText = "Healthy";
-                    }
+                return (
+                  <article
+                    className="domain-row"
+                    key={item.id || `${domainName}-${index}`}
+                  >
+                    <div className="domain-name-cell">
+                      <div className="domain-favicon">
+                        {domainName.charAt(0).toUpperCase()}
+                      </div>
 
-                    return (
-                      <tr key={item.id || domainName}>
-                        <td data-label="Domain">
-                          <div className="domain-details">
-                            <span className="domain-letter">
-                              {domainName
-                                ?.charAt(0)
-                                .toUpperCase()}
+                      <div>
+                        <strong>{domainName}</strong>
+                        <span>DNS monitoring enabled</span>
+                      </div>
+                    </div>
+
+                    <div className="nameserver-cell">
+                      {nameservers.length > 0 ? (
+                        <>
+                          <strong>{nameservers[0]}</strong>
+
+                          {nameservers.length > 1 && (
+                            <span>
+                              +{nameservers.length - 1} additional nameserver
+                              {nameservers.length - 1 === 1 ? "" : "s"}
                             </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="muted-text">
+                          Run a check to retrieve nameservers
+                        </span>
+                      )}
+                    </div>
 
-                            <div>
-                              <strong>
-                                {domainName}
-                              </strong>
+                    <div className="date-cell">
+                      <span>{formatDate(checkedAt)}</span>
+                    </div>
 
-                              <small>
-                                Added{" "}
-                                {formatDate(
-                                  item.created_at
-                                )}
-                              </small>
-                            </div>
-                          </div>
-                        </td>
+                    <div>
+                      <span
+                        className={`status-badge ${
+                          hasChanged
+                            ? "status-changed"
+                            : nameservers.length > 0
+                            ? "status-stable"
+                            : "status-pending"
+                        }`}
+                      >
+                        <span />
 
-                        <td data-label="Status">
-                          <span
-                            className={`status-badge status-${status}`}
-                          >
-                            <span />
-                            {statusText}
-                          </span>
-                        </td>
+                        {hasChanged
+                          ? "Changed"
+                          : nameservers.length > 0
+                          ? "Stable"
+                          : "Pending"}
+                      </span>
+                    </div>
 
-                        <td data-label="Nameservers">
-                          <div className="nameserver-list">
-                            {nameservers.length ? (
-                              <>
-                                {nameservers
-                                  .slice(0, 2)
-                                  .map((nameserver) => (
-                                    <code
-                                      key={nameserver}
-                                    >
-                                      {nameserver}
-                                    </code>
-                                  ))}
-
-                                {nameservers.length >
-                                  2 && (
-                                  <small>
-                                    +
-                                    {nameservers.length -
-                                      2}{" "}
-                                    more
-                                  </small>
-                                )}
-                              </>
-                            ) : (
-                              <span className="muted-text">
-                                Run a check to view
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td data-label="Last checked">
-                          <span className="last-checked">
-                            {result
-                              ? formatDate(
-                                  result.checkedAt
-                                )
-                              : "Not checked"}
-                          </span>
-                        </td>
-
-                        <td
-                          className="action-cell"
-                          data-label="Action"
-                        >
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleCheckDomain(
-                                domainName
-                              )
-                            }
-                            disabled={isChecking}
-                          >
-                            <Icon
-                              name="refresh"
-                              size={15}
-                              className={
-                                isChecking
-                                  ? "spinning"
-                                  : ""
-                              }
-                            />
-
-                            {isChecking
-                              ? "Checking"
-                              : "Check now"}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    <div className="domain-actions">
+                      <button
+                        type="button"
+                        className="check-button"
+                        onClick={() => checkDomain(domainName)}
+                        disabled={isChecking || checkingAll}
+                      >
+                        <span className={isChecking ? "spin" : ""}>↻</span>
+                        {isChecking ? "Checking" : "Check now"}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
         </section>
-
-        <footer className="footer">
-          <span>
-            DomainPulse · Nameserver monitoring for
-            domain investors
-          </span>
-
-          <a
-            href={API_URL}
-            target="_blank"
-            rel="noreferrer"
-          >
-            API endpoint
-            <Icon name="external" size={13} />
-          </a>
-        </footer>
       </main>
     </div>
-  );
-}
-
-function App() {
-  if (!GOOGLE_CLIENT_ID) {
-    return <DomainPulseApp />;
-  }
-
-  return (
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <DomainPulseApp />
-    </GoogleOAuthProvider>
   );
 }
 
