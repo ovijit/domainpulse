@@ -1,0 +1,37 @@
+name: DomainPulse scheduled monitoring
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: domainpulse-scheduled-monitoring
+  cancel-in-progress: false
+
+jobs:
+  check-domains:
+    name: Check all monitored domains
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Wake API and run monitoring
+        env:
+          CRON_SECRET: ${{ secrets.DOMAINPULSE_CRON_SECRET }}
+        run: |
+          test -n "$CRON_SECRET" || { echo "DOMAINPULSE_CRON_SECRET is not configured"; exit 1; }
+
+          curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            --retry 2 \
+            --retry-delay 15 \
+            --max-time 480 \
+            --request POST \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            https://api.domainpulsehq.com/api/internal/run-monitoring

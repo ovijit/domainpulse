@@ -3,9 +3,14 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import pg from "pg";
-import dns from "dns/promises";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { OAuth2Client } from "google-auth-library";
+import { createEmailService } from "./services/email.js";
+import {
+  createMonitoringService,
+  MonitoringError,
+} from "./services/monitoring.js";
 
 dotenv.config();
 
@@ -57,6 +62,8 @@ const pool = new Pool({
 });
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const emailService = createEmailService();
+const monitoringService = createMonitoringService({ pool, emailService });
 
 function sessionCookieOptions() {
   return {
@@ -80,13 +87,37 @@ async function setupDatabase() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
-      google_sub TEXT UNIQUE NOT NULL,
+      google_sub TEXT UNIQUE,
       email TEXT UNIQUE NOT NULL,
-      name TEXT NOT NULL,
+      name TEXT,
       picture TEXT,
+      email_alerts_enabled BOOLEAN NOT NULL DEFAULT TRUE,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS picture TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_alerts_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+    CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_unique ON users (google_sub);
+    CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (email);
+
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'users'
+          AND column_name = 'google_id'
+      ) THEN
+        ALTER TABLE users ALTER COLUMN google_id DROP NOT NULL;
+      END IF;
+    END $$;
 
     CREATE TABLE IF NOT EXISTS domains (
       id SERIAL PRIMARY KEY,
@@ -108,6 +139,37 @@ async function setupDatabase() {
 
     CREATE UNIQUE INDEX IF NOT EXISTS domains_user_domain_unique
       ON domains (user_id, domain);
+
+    CREATE TABLE IF NOT EXISTS domain_monitoring_history (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      domain_id INTEGER NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL CHECK (event_type IN ('baseline', 'change')),
+      previous_nameservers TEXT[] NOT NULL DEFAULT '{}',
+      current_nameservers TEXT[] NOT NULL DEFAULT '{}',
+      source TEXT NOT NULL CHECK (source IN ('manual', 'scheduled')),
+      checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS monitoring_history_domain_checked_idx
+      ON domain_monitoring_history (domain_id, checked_at DESC);
+
+    CREATE TABLE IF NOT EXISTS domain_alerts (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      domain_id INTEGER NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+      alert_type TEXT NOT NULL,
+      previous_nameservers TEXT[] NOT NULL DEFAULT '{}',
+      current_nameservers TEXT[] NOT NULL DEFAULT '{}',
+      email_status TEXT NOT NULL DEFAULT 'pending',
+      email_provider_id TEXT,
+      email_error TEXT,
+      email_sent_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS domain_alerts_user_created_idx
+      ON domain_alerts (user_id, created_at DESC);
   `);
 }
 
@@ -152,6 +214,27 @@ async function requireAuth(req, res, next) {
   }
 }
 
+function requireCronSecret(req, res, next) {
+  const expected = process.env.CRON_SECRET;
+  const provided = req.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
+
+  if (!expected) {
+    return res.status(503).json({ message: "Scheduled monitoring is not configured" });
+  }
+
+  const expectedBuffer = Buffer.from(expected);
+  const providedBuffer = Buffer.from(provided);
+  const matches =
+    expectedBuffer.length === providedBuffer.length &&
+    crypto.timingSafeEqual(expectedBuffer, providedBuffer);
+
+  if (!matches) {
+    return res.status(401).json({ message: "Invalid scheduler credential" });
+  }
+
+  next();
+}
+
 app.get("/", (req, res) => {
   res.json({ message: "DomainPulse backend running" });
 });
@@ -174,20 +257,47 @@ app.post("/api/auth/google", async (req, res) => {
       return res.status(401).json({ message: "Google account could not be verified" });
     }
 
-    const result = await pool.query(
+    const normalizedEmail = profile.email.toLowerCase();
+    const existingUser = await pool.query(
       `
-        INSERT INTO users (google_sub, email, name, picture)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (google_sub)
-        DO UPDATE SET
-          email = EXCLUDED.email,
-          name = EXCLUDED.name,
-          picture = EXCLUDED.picture,
-          updated_at = NOW()
-        RETURNING id, email, name, picture, created_at
+        SELECT id
+        FROM users
+        WHERE google_sub = $1 OR LOWER(email) = $2
+        ORDER BY CASE WHEN google_sub = $1 THEN 0 ELSE 1 END
+        LIMIT 1
       `,
-      [profile.sub, profile.email.toLowerCase(), profile.name || profile.email, profile.picture || null]
+      [profile.sub, normalizedEmail]
     );
+
+    const result = existingUser.rows[0]
+      ? await pool.query(
+          `
+            UPDATE users
+            SET google_sub = $1, email = $2, name = $3, picture = $4, updated_at = NOW()
+            WHERE id = $5
+            RETURNING id, email, name, picture, created_at
+          `,
+          [
+            profile.sub,
+            normalizedEmail,
+            profile.name || profile.email,
+            profile.picture || null,
+            existingUser.rows[0].id,
+          ]
+        )
+      : await pool.query(
+          `
+            INSERT INTO users (google_sub, email, name, picture)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, email, name, picture, created_at
+          `,
+          [
+            profile.sub,
+            normalizedEmail,
+            profile.name || profile.email,
+            profile.picture || null,
+          ]
+        );
 
     const user = result.rows[0];
     const legacyOwnerEmail = process.env.LEGACY_OWNER_EMAIL?.trim().toLowerCase();
@@ -270,54 +380,70 @@ app.post("/api/domains", requireAuth, async (req, res) => {
 app.post("/api/check/:domain", requireAuth, async (req, res) => {
   try {
     const domain = req.params.domain.trim().toLowerCase();
-    const existingResult = await pool.query(
-      "SELECT id, nameservers FROM domains WHERE domain = $1 AND user_id = $2",
-      [domain, req.user.id]
-    );
-    const existingDomain = existingResult.rows[0];
-
-    if (!existingDomain) {
-      return res.status(404).json({ message: "Domain not found in your account" });
-    }
-
-    let nameservers;
-
-    try {
-      nameservers = await dns.resolveNs(domain);
-      nameservers = nameservers.map((ns) => ns.toLowerCase()).sort();
-    } catch (error) {
-      console.error(`DNS lookup failed for ${domain}:`, error.code || error.message);
-      return res.status(422).json({
-        message: `Nameservers could not be resolved for ${domain}. Check the spelling and DNS configuration.`,
-      });
-    }
-
-    const oldNameservers = [...(existingDomain.nameservers || [])].sort();
-    const changed =
-      oldNameservers.length > 0 &&
-      JSON.stringify(oldNameservers) !== JSON.stringify(nameservers);
-
-    const updateResult = await pool.query(
-      `
-        UPDATE domains
-        SET nameservers = $1, checked_at = NOW()
-        WHERE id = $2 AND user_id = $3
-        RETURNING checked_at
-      `,
-      [nameservers, existingDomain.id, req.user.id]
-    );
-
-    res.json({
+    const result = await monitoringService.checkDomain({
       domain,
-      nameservers,
-      changed,
-      checked_at: updateResult.rows[0].checked_at,
+      userId: req.user.id,
+      source: "manual",
     });
+
+    res.json(result);
   } catch (error) {
     console.error("Check domain error:", error);
+    if (error instanceof MonitoringError) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
     res.status(500).json({ message: "Failed to check domain" });
   }
 });
+
+app.get("/api/history/:domain", requireAuth, async (req, res) => {
+  try {
+    const domain = req.params.domain.trim().toLowerCase();
+    const result = await pool.query(
+      `
+        SELECT
+          h.id,
+          h.event_type,
+          h.previous_nameservers,
+          h.current_nameservers,
+          h.source,
+          h.checked_at
+        FROM domain_monitoring_history h
+        JOIN domains d ON d.id = h.domain_id
+        WHERE d.domain = $1 AND d.user_id = $2
+        ORDER BY h.checked_at DESC
+        LIMIT 100
+      `,
+      [domain, req.user.id]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Fetch history error:", error);
+    res.status(500).json({ message: "Failed to fetch domain history" });
+  }
+});
+
+app.post(
+  "/api/internal/run-monitoring",
+  requireCronSecret,
+  async (req, res) => {
+    try {
+      const startedAt = new Date();
+      const summary = await monitoringService.runScheduledChecks();
+
+      res.json({
+        message: "Scheduled monitoring completed",
+        started_at: startedAt.toISOString(),
+        finished_at: new Date().toISOString(),
+        ...summary,
+      });
+    } catch (error) {
+      console.error("Scheduled monitoring error:", error);
+      res.status(500).json({ message: "Scheduled monitoring failed" });
+    }
+  }
+);
 
 app.delete("/api/domains/:domain", requireAuth, async (req, res) => {
   try {

@@ -66,6 +66,21 @@ function formatDate(dateValue) {
   }).format(date);
 }
 
+function formatDateTime(dateValue) {
+  if (!dateValue) return "Unknown time";
+
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return "Unknown time";
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function getDomainStatus(domainItem, checkResults) {
   const domainName = getDomainName(domainItem);
   const result = checkResults[domainName];
@@ -108,6 +123,8 @@ function App() {
   const [messageType, setMessageType] = useState("success");
   const [checkResults, setCheckResults] = useState({});
   const [selectedDomain, setSelectedDomain] = useState(null);
+  const [domainHistory, setDomainHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const messageTimer = useRef(null);
@@ -278,6 +295,42 @@ function App() {
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, []);
+
+  useEffect(() => {
+    const domainName = selectedDomain ? getDomainName(selectedDomain) : "";
+
+    if (!domainName) {
+      setDomainHistory([]);
+      setHistoryLoading(false);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+
+    async function loadHistory() {
+      try {
+        setHistoryLoading(true);
+        const response = await fetch(
+          `${API_URL}/api/history/${encodeURIComponent(domainName)}`,
+          { credentials: "include", signal: controller.signal }
+        );
+
+        if (!response.ok) throw new Error("Could not load monitoring history.");
+        const data = await response.json();
+        setDomainHistory(Array.isArray(data) ? data : []);
+      } catch (error) {
+        if (error.name !== "AbortError") {
+          console.error("Load history error:", error);
+          setDomainHistory([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) setHistoryLoading(false);
+      }
+    }
+
+    loadHistory();
+    return () => controller.abort();
+  }, [selectedDomain]);
 
   async function addDomain(event) {
     event.preventDefault();
@@ -858,6 +911,48 @@ function App() {
                 </div>
               ) : (
                 <div className="drawer-empty">No nameservers recorded yet.</div>
+              )}
+            </div>
+
+            <div className="drawer-section">
+              <div className="drawer-section-title">
+                <span>Monitoring history</span>
+                <small>{domainHistory.length}</small>
+              </div>
+              {historyLoading ? (
+                <div className="history-loading">
+                  <span className="state-loader" />
+                  Loading history
+                </div>
+              ) : domainHistory.length ? (
+                <div className="history-list">
+                  {domainHistory.map((event) => (
+                    <article className={`history-event history-${event.event_type}`} key={event.id}>
+                      <span className="history-event-dot" />
+                      <div>
+                        <strong>
+                          {event.event_type === "change"
+                            ? "Nameservers changed"
+                            : "Monitoring baseline created"}
+                        </strong>
+                        <small>
+                          {formatDateTime(event.checked_at)} · {event.source}
+                        </small>
+                        {event.event_type === "change" && (
+                          <p>
+                            {(event.previous_nameservers || []).join(", ") || "None"}
+                            <span>→</span>
+                            {(event.current_nameservers || []).join(", ") || "None"}
+                          </p>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="drawer-empty">
+                  Run the first check to create a monitoring baseline.
+                </div>
               )}
             </div>
 
