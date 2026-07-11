@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { GoogleLogin } from "@react-oauth/google";
 import {
   Activity,
   AlertTriangle,
@@ -11,6 +12,7 @@ import {
   Copy,
   Globe2,
   LayoutDashboard,
+  LogOut,
   Menu,
   Plus,
   RefreshCw,
@@ -90,6 +92,9 @@ function StatusBadge({ status }) {
 }
 
 function App() {
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState("");
   const [domains, setDomains] = useState([]);
   const [domain, setDomain] = useState("");
   const [search, setSearch] = useState("");
@@ -150,11 +155,79 @@ function App() {
     messageTimer.current = window.setTimeout(() => setMessage(""), 4500);
   }
 
+  async function loadSession() {
+    try {
+      const response = await fetch(`${API_URL}/api/auth/me`, {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        setUser(null);
+        return;
+      }
+
+      const data = await response.json();
+      setUser(data.user || null);
+    } catch (error) {
+      console.error("Session check error:", error);
+      setUser(null);
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleGoogleSuccess(credentialResponse) {
+    try {
+      setAuthLoading(true);
+      setAuthError("");
+
+      const response = await fetch(`${API_URL}/api/auth/google`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ credential: credentialResponse.credential }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || "Google sign-in failed.");
+      }
+
+      setUser(data.user);
+    } catch (error) {
+      console.error("Google sign-in error:", error);
+      setAuthError(error.message || "Google sign-in failed.");
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function logout() {
+    try {
+      await fetch(`${API_URL}/api/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } finally {
+      setUser(null);
+      setDomains([]);
+      setCheckResults({});
+      setSelectedDomain(null);
+      setBackendConnected(false);
+    }
+  }
+
   async function loadDomains(showLoader = true) {
     try {
       if (showLoader) setLoading(true);
 
-      const response = await fetch(`${API_URL}/api/domains`);
+      const response = await fetch(`${API_URL}/api/domains`, {
+        credentials: "include",
+      });
+      if (response.status === 401) {
+        setUser(null);
+        throw new Error("Your session expired. Please sign in again.");
+      }
       if (!response.ok) throw new Error("Could not load domains.");
 
       const data = await response.json();
@@ -182,9 +255,17 @@ function App() {
   }
 
   useEffect(() => {
-    loadDomains();
+    loadSession();
     return () => window.clearTimeout(messageTimer.current);
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      loadDomains();
+    } else if (!authLoading) {
+      setLoading(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     function closeOnEscape(event) {
@@ -217,6 +298,7 @@ function App() {
       const response = await fetch(`${API_URL}/api/domains`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ domain: cleanDomain }),
       });
       const data = await response.json().catch(() => ({}));
@@ -242,7 +324,7 @@ function App() {
       setCheckingDomain(domainName);
       const response = await fetch(
         `${API_URL}/api/check/${encodeURIComponent(domainName)}`,
-        { method: "POST" }
+        { method: "POST", credentials: "include" }
       );
       const data = await response.json().catch(() => ({}));
 
@@ -255,7 +337,7 @@ function App() {
       const nameservers = Array.isArray(data.nameservers)
         ? data.nameservers
         : [];
-      const checkedAt = new Date().toISOString();
+      const checkedAt = data.checked_at || new Date().toISOString();
 
       setBackendConnected(true);
       setLastSyncedAt(new Date());
@@ -354,6 +436,48 @@ function App() {
     ? getDomainStatus(selectedDomain, checkResults)
     : "pending";
 
+  if (authLoading) {
+    return (
+      <main className="auth-shell">
+        <section className="auth-card auth-loading-card">
+          <span className="state-loader" />
+          <h1>Opening DomainPulse</h1>
+          <p>Checking your secure session.</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return (
+      <main className="auth-shell">
+        <section className="auth-card">
+          <span className="auth-brand-mark" aria-hidden="true">
+            <Activity size={28} strokeWidth={2.4} />
+          </span>
+          <p className="eyebrow">Domain intelligence</p>
+          <h1>Your domains. Your private workspace.</h1>
+          <p className="auth-intro">
+            Sign in to monitor nameservers and keep your portfolio separate from every other user.
+          </p>
+          <div className="google-login-wrap">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={() => setAuthError("Google sign-in was cancelled or failed.")}
+              useOneTap
+              theme="outline"
+              size="large"
+              shape="rectangular"
+              text="continue_with"
+            />
+          </div>
+          {authError && <p className="auth-error">{authError}</p>}
+          <small className="auth-note">Your session is stored in a secure, HTTP-only cookie.</small>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileMenuOpen ? "sidebar-open" : ""}`}>
@@ -409,12 +533,18 @@ function App() {
           </div>
 
           <div className="profile-card">
-            <span className="avatar">AR</span>
-            <span>
-              <strong>Your workspace</strong>
-              <small>Portfolio overview</small>
+            {user.picture ? (
+              <img className="avatar avatar-image" src={user.picture} alt="" referrerPolicy="no-referrer" />
+            ) : (
+              <span className="avatar">{user.name?.charAt(0).toUpperCase() || "U"}</span>
+            )}
+            <span className="profile-copy">
+              <strong>{user.name}</strong>
+              <small>{user.email}</small>
             </span>
-            <ChevronRight size={16} />
+            <button className="profile-logout" type="button" onClick={logout} title="Sign out" aria-label="Sign out">
+              <LogOut size={16} />
+            </button>
           </div>
         </div>
       </aside>

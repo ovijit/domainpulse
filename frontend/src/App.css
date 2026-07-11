@@ -34,6 +34,93 @@
   min-height: 100vh;
 }
 
+.auth-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 10%, rgba(215, 235, 219, 0.8), transparent 35%),
+    var(--canvas);
+}
+
+.auth-card {
+  width: min(100%, 470px);
+  padding: 52px 48px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 24px 80px rgba(30, 42, 34, 0.09);
+  text-align: center;
+}
+
+.auth-brand-mark {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 25px;
+  place-items: center;
+  border-radius: 17px;
+  background: #dff3e4;
+  color: #285f3e;
+}
+
+.auth-card .eyebrow {
+  margin-bottom: 12px;
+}
+
+.auth-card h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(30px, 6vw, 43px);
+  line-height: 1.02;
+  letter-spacing: -2px;
+}
+
+.auth-intro {
+  max-width: 350px;
+  margin: 18px auto 28px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.google-login-wrap {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+}
+
+.auth-error {
+  margin: 15px 0 0;
+  color: var(--red);
+  font-size: 11px;
+}
+
+.auth-note {
+  display: block;
+  margin-top: 20px;
+  color: var(--subtle);
+  font-size: 9px;
+}
+
+.auth-loading-card {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+}
+
+.auth-loading-card h1 {
+  font-size: 26px;
+  letter-spacing: -1px;
+}
+
+.auth-loading-card p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;
@@ -239,7 +326,12 @@
   font-weight: 700;
 }
 
-.profile-card > span:nth-child(2) {
+.avatar-image {
+  object-fit: cover;
+}
+
+.profile-copy {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -250,12 +342,31 @@
 }
 
 .profile-card small {
+  display: block;
+  max-width: 125px;
+  overflow: hidden;
   color: #6f7670;
   font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.profile-card > svg {
+.profile-logout {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   color: #555d57;
+  cursor: pointer;
+}
+
+.profile-logout:hover {
+  background: #242925;
+  color: #eef2ef;
 }
 
 .main-content {
@@ -1278,6 +1389,15 @@
 }
 
 @media (max-width: 680px) {
+  .auth-shell {
+    padding: 14px;
+  }
+
+  .auth-card {
+    padding: 40px 24px;
+    border-radius: 17px;
+  }
+
   .main-content {
     padding: 0 14px 45px;
   }
