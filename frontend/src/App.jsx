@@ -362,7 +362,11 @@ function App() {
 
       setDomain("");
       setBackendConnected(true);
-      showMessage(`${cleanDomain} is now being monitored.`);
+      showMessage(
+        data.email_status === "sent"
+          ? `${cleanDomain} is now monitored. Confirmation email sent to ${user.email}.`
+          : `${cleanDomain} is now being monitored.`
+      );
       await loadDomains(false);
     } catch (error) {
       console.error("Add domain error:", error);

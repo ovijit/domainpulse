@@ -363,9 +363,26 @@ app.post("/api/domains", requireAuth, async (req, res) => {
       [cleanDomain, [], req.user.id]
     );
 
+    let confirmationEmail;
+
+    try {
+      confirmationEmail = await emailService.sendDomainAdded({
+        to: req.user.email,
+        name: req.user.name,
+        domain: cleanDomain,
+      });
+    } catch (emailError) {
+      console.error(`Confirmation email failed for ${cleanDomain}:`, emailError);
+      confirmationEmail = { status: "failed" };
+    }
+
     res.status(201).json({
-      message: "Domain added",
+      message:
+        confirmationEmail.status === "sent"
+          ? "Domain added and confirmation email sent"
+          : "Domain added",
       domain: result.rows[0],
+      email_status: confirmationEmail.status,
     });
   } catch (error) {
     if (error.code === "23505") {

@@ -16,6 +16,15 @@ ALERT_FROM_EMAIL=DomainPulse <alerts@domainpulsehq.com>
 
 `ALERT_FROM_EMAIL` must use a domain verified in Resend.
 
+The same configuration sends two types of email:
+
+- A confirmation after a signed-in user successfully adds a domain.
+- An alert when a later monitoring check detects a nameserver change.
+
+If Resend is temporarily unavailable, adding the domain still succeeds. The API
+returns `email_status: "failed"` or `email_status: "skipped"` while the domain
+remains safely stored in the user's account.
+
 ## 2. Configure scheduler authentication
 
 Generate a separate long random secret and add it to Render:
