@@ -71,3 +71,33 @@ test("sendNameserverChange keeps the existing alert recipient format", async () 
     "Nameserver change detected for example.com"
   );
 });
+
+test("sendBulkImportSummary sends one report for the whole import", async () => {
+  let sentMessage;
+  const service = createEmailService({
+    from: "DomainPulse <alerts@domainpulsehq.com>",
+    frontendUrl: "https://domainpulsehq.com",
+    resendClient: {
+      emails: {
+        async send(message) {
+          sentMessage = message;
+          return { data: { id: "email_bulk_123" }, error: null };
+        },
+      },
+    },
+  });
+
+  await service.sendBulkImportSummary({
+    to: "avijit@example.com",
+    name: "Avijit",
+    addedDomains: ["one.org", "two.ai"],
+    duplicateDomains: ["existing.com"],
+    invalidEntries: ["not a domain"],
+    baseline: { checked: 2, failed: 0 },
+  });
+
+  assert.deepEqual(sentMessage.to, ["avijit@example.com"]);
+  assert.equal(sentMessage.subject, "2 domains added to DomainPulse");
+  assert.match(sentMessage.text, /• one\.org/);
+  assert.match(sentMessage.text, /• two\.ai/);
+});

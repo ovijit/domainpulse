@@ -8,6 +8,10 @@ import crypto from "crypto";
 import { OAuth2Client } from "google-auth-library";
 import { createEmailService } from "./services/email.js";
 import {
+  createDomainImportService,
+  DomainImportError,
+} from "./services/domain-import.js";
+import {
   createMonitoringService,
   MonitoringError,
 } from "./services/monitoring.js";
@@ -64,6 +68,11 @@ const pool = new Pool({
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const emailService = createEmailService();
 const monitoringService = createMonitoringService({ pool, emailService });
+const domainImportService = createDomainImportService({
+  pool,
+  monitoringService,
+  emailService,
+});
 
 function sessionCookieOptions() {
   return {
@@ -391,6 +400,29 @@ app.post("/api/domains", requireAuth, async (req, res) => {
 
     console.error("Add domain error:", error);
     res.status(500).json({ message: "Failed to add domain" });
+  }
+});
+
+app.post("/api/domains/bulk", requireAuth, async (req, res) => {
+  try {
+    const result = await domainImportService.importDomains({
+      entries: req.body.domains,
+      user: req.user,
+    });
+
+    res.status(result.added.length > 0 ? 201 : 200).json({
+      message: `${result.added.length} domain${
+        result.added.length === 1 ? "" : "s"
+      } added`,
+      ...result,
+    });
+  } catch (error) {
+    if (error instanceof DomainImportError) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+
+    console.error("Bulk domain import error:", error);
+    res.status(500).json({ message: "Failed to import domains" });
   }
 });
 

@@ -50,6 +50,39 @@ Open your dashboard: ${frontendUrl}
     });
   }
 
+  async function sendBulkImportSummary({
+    to,
+    name,
+    addedDomains,
+    duplicateDomains,
+    invalidEntries,
+    baseline,
+  }) {
+    const greeting = name ? `Hi ${name},` : "Hello,";
+    const domainList = addedDomains.map((domain) => `• ${domain}`).join("\n");
+
+    return sendEmail({
+      to,
+      subject: `${addedDomains.length} domains added to DomainPulse`,
+      text: `${greeting}
+
+Your bulk import is complete.
+
+Added: ${addedDomains.length}
+Already monitored or repeated: ${duplicateDomains.length}
+Invalid entries: ${invalidEntries.length}
+Nameserver baselines created: ${baseline.checked}
+Baseline checks requiring attention: ${baseline.failed}
+
+Added domains:
+${domainList}
+
+Open your dashboard: ${frontendUrl}
+
+— DomainPulse`,
+    });
+  }
+
   async function sendNameserverChange({
     to,
     name,
@@ -86,5 +119,5 @@ If you expected this change, no action is required. If not, check your registrar
     });
   }
 
-  return { sendDomainAdded, sendNameserverChange };
+  return { sendDomainAdded, sendBulkImportSummary, sendNameserverChange };
 }

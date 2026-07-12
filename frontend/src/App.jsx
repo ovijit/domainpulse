@@ -27,6 +27,7 @@ import "./App.css";
 const API_URL = (
   import.meta.env.VITE_API_URL || "http://localhost:5001"
 ).replace(/\/$/, "");
+const DOMAIN_PATTERN = /^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,}$/i;
 
 function normalizeDomain(value) {
   return value
@@ -37,6 +38,13 @@ function normalizeDomain(value) {
     .split("/")[0]
     .split("?")[0]
     .split("#")[0];
+}
+
+function parseBulkEntries(value) {
+  return value
+    .split(/[\n,;]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
 function getDomainName(domainItem) {
@@ -117,6 +125,9 @@ function App() {
   const [backendConnected, setBackendConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkInput, setBulkInput] = useState("");
+  const [bulkImporting, setBulkImporting] = useState(false);
   const [checkingDomain, setCheckingDomain] = useState("");
   const [checkingAll, setCheckingAll] = useState(false);
   const [message, setMessage] = useState("");
@@ -131,6 +142,27 @@ function App() {
   const domainInput = useRef(null);
 
   const domainCount = domains.length;
+  const bulkEntries = useMemo(() => parseBulkEntries(bulkInput), [bulkInput]);
+  const bulkPreview = useMemo(() => {
+    const existing = new Set(domains.map((item) => getDomainName(item)));
+    const seen = new Set();
+    const preview = { valid: 0, duplicate: 0, invalid: 0 };
+
+    bulkEntries.forEach((entry) => {
+      const normalized = normalizeDomain(entry);
+
+      if (!DOMAIN_PATTERN.test(normalized)) {
+        preview.invalid += 1;
+      } else if (seen.has(normalized) || existing.has(normalized)) {
+        preview.duplicate += 1;
+      } else {
+        seen.add(normalized);
+        preview.valid += 1;
+      }
+    });
+
+    return preview;
+  }, [bulkEntries, domains]);
 
   const monitoredNameserverCount = useMemo(() => {
     const nameservers = new Set();
@@ -289,12 +321,13 @@ function App() {
       if (event.key === "Escape") {
         setSelectedDomain(null);
         setMobileMenuOpen(false);
+        if (!bulkImporting) setBulkOpen(false);
       }
     }
 
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, []);
+  }, [bulkImporting]);
 
   useEffect(() => {
     const domainName = selectedDomain ? getDomainName(selectedDomain) : "";
@@ -336,7 +369,7 @@ function App() {
     event.preventDefault();
     const cleanDomain = normalizeDomain(domain);
 
-    if (!/^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,}$/i.test(cleanDomain)) {
+    if (!DOMAIN_PATTERN.test(cleanDomain)) {
       showMessage("Enter a valid domain, such as example.com.", "error");
       return;
     }
@@ -373,6 +406,61 @@ function App() {
       showMessage(error.message || "Could not add the domain.", "error");
     } finally {
       setAdding(false);
+    }
+  }
+
+  async function importDomains(event) {
+    event.preventDefault();
+
+    if (bulkEntries.length === 0) {
+      showMessage("Paste at least one domain to import.", "error");
+      return;
+    }
+
+    if (bulkEntries.length > 100) {
+      showMessage("Import up to 100 domains at a time.", "error");
+      return;
+    }
+
+    try {
+      setBulkImporting(true);
+      const response = await fetch(`${API_URL}/api/domains/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ domains: bulkEntries }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || "Could not import domains.");
+      }
+
+      const addedCount = Array.isArray(data.added) ? data.added.length : 0;
+      const duplicateCount = Array.isArray(data.duplicates)
+        ? data.duplicates.length
+        : 0;
+      const invalidCount = Array.isArray(data.invalid) ? data.invalid.length : 0;
+      const failedBaselines = data.baseline?.failed || 0;
+      const summary = `${addedCount} added · ${duplicateCount} duplicate${
+        duplicateCount === 1 ? "" : "s"
+      } · ${invalidCount} invalid`;
+
+      showMessage(
+        data.email_status === "sent"
+          ? `${summary} · Summary email sent.`
+          : summary,
+        failedBaselines > 0 || addedCount === 0 ? "warning" : "success"
+      );
+      setBulkInput("");
+      setBulkOpen(false);
+      setBackendConnected(true);
+      await loadDomains(false);
+    } catch (error) {
+      console.error("Bulk import error:", error);
+      showMessage(error.message || "Could not import domains.", "error");
+    } finally {
+      setBulkImporting(false);
     }
   }
 
@@ -727,6 +815,15 @@ function App() {
                 disabled={adding}
               />
             </label>
+            <button
+              className="button button-dark-secondary"
+              type="button"
+              onClick={() => setBulkOpen(true)}
+              disabled={adding}
+            >
+              <Copy size={16} />
+              Bulk add
+            </button>
             <button className="button button-primary" type="submit" disabled={adding}>
               {adding ? <RefreshCw className="spin" size={16} /> : <Plus size={16} />}
               {adding ? "Adding..." : "Add domain"}
@@ -871,6 +968,104 @@ function App() {
           <strong>{Object.keys(checkResults).length}</strong>
         </section>
       </main>
+
+      {bulkOpen && (
+        <>
+          <button
+            className="bulk-modal-scrim"
+            type="button"
+            aria-label="Close bulk domain import"
+            onClick={() => !bulkImporting && setBulkOpen(false)}
+          />
+          <section
+            className="bulk-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bulk-import-title"
+          >
+            <header className="bulk-modal-header">
+              <div>
+                <p className="section-label">Portfolio onboarding</p>
+                <h2 id="bulk-import-title">Bulk add domains</h2>
+                <p>Paste up to 100 domains, one per line or separated by commas.</p>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="Close bulk domain import"
+                disabled={bulkImporting}
+                onClick={() => setBulkOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </header>
+
+            <form className="bulk-form" onSubmit={importDomains}>
+              <label htmlFor="bulk-domains">Domains to monitor</label>
+              <textarea
+                id="bulk-domains"
+                autoFocus
+                value={bulkInput}
+                onChange={(event) => setBulkInput(event.target.value)}
+                placeholder={"example.com\nportfolio.org\nbrand.xyz\nstartup.io\nproduct.ai"}
+                disabled={bulkImporting}
+              />
+
+              <div className="bulk-import-meta">
+                <span className={bulkEntries.length > 100 ? "bulk-limit-error" : ""}>
+                  {bulkEntries.length} / 100 entries
+                </span>
+                <span>Duplicates and invalid entries are skipped safely.</span>
+              </div>
+
+              <div className="bulk-preview" aria-label="Bulk import preview">
+                <span className="bulk-preview-valid">
+                  <Check size={13} /> {bulkPreview.valid} valid
+                </span>
+                <span className="bulk-preview-duplicate">
+                  <Copy size={13} /> {bulkPreview.duplicate} duplicate
+                </span>
+                <span className="bulk-preview-invalid">
+                  <AlertTriangle size={13} /> {bulkPreview.invalid} invalid
+                </span>
+              </div>
+
+              <div className="bulk-modal-actions">
+                <button
+                  className="button button-secondary"
+                  type="button"
+                  disabled={bulkImporting}
+                  onClick={() => setBulkOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="button button-primary"
+                  type="submit"
+                  disabled={
+                    bulkImporting ||
+                    bulkPreview.valid === 0 ||
+                    bulkEntries.length > 100
+                  }
+                >
+                  {bulkImporting ? (
+                    <RefreshCw className="spin" size={16} />
+                  ) : (
+                    <Plus size={16} />
+                  )}
+                  {bulkImporting
+                    ? "Importing and checking..."
+                    : bulkPreview.valid > 0
+                      ? `Import ${bulkPreview.valid} domain${
+                          bulkPreview.valid === 1 ? "" : "s"
+                        }`
+                      : "Import domains"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </>
+      )}
 
       {selectedDomain && (
         <>
