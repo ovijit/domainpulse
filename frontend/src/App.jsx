@@ -19,6 +19,7 @@ import {
   Search,
   ServerCog,
   ShieldCheck,
+  Trash2,
   X,
   Zap,
 } from "lucide-react";
@@ -134,6 +135,8 @@ function App() {
   const [messageType, setMessageType] = useState("success");
   const [checkResults, setCheckResults] = useState({});
   const [selectedDomain, setSelectedDomain] = useState(null);
+  const [deleteConfirming, setDeleteConfirming] = useState(false);
+  const [deletingDomain, setDeletingDomain] = useState(false);
   const [domainHistory, setDomainHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -319,7 +322,7 @@ function App() {
   useEffect(() => {
     function closeOnEscape(event) {
       if (event.key === "Escape") {
-        setSelectedDomain(null);
+        if (!deletingDomain) setSelectedDomain(null);
         setMobileMenuOpen(false);
         if (!bulkImporting) setBulkOpen(false);
       }
@@ -327,7 +330,11 @@ function App() {
 
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [bulkImporting]);
+  }, [bulkImporting, deletingDomain]);
+
+  useEffect(() => {
+    setDeleteConfirming(false);
+  }, [selectedDomain]);
 
   useEffect(() => {
     const domainName = selectedDomain ? getDomainName(selectedDomain) : "";
@@ -571,6 +578,41 @@ function App() {
       showMessage(`${nameserver} copied.`);
     } catch {
       showMessage("Could not copy the nameserver.", "error");
+    }
+  }
+
+  async function removeDomain() {
+    if (!selectedName) return;
+
+    try {
+      setDeletingDomain(true);
+      const response = await fetch(
+        `${API_URL}/api/domains/${encodeURIComponent(selectedName)}`,
+        { method: "DELETE", credentials: "include" }
+      );
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || `Could not remove ${selectedName}.`);
+      }
+
+      setDomains((current) =>
+        current.filter((item) => getDomainName(item) !== selectedName)
+      );
+      setCheckResults((current) => {
+        const next = { ...current };
+        delete next[selectedName];
+        return next;
+      });
+      setSelectedDomain(null);
+      setDeleteConfirming(false);
+      setLastSyncedAt(new Date());
+      showMessage(`${selectedName} was removed from monitoring.`);
+    } catch (error) {
+      console.error("Remove domain error:", error);
+      showMessage(error.message || "Could not remove the domain.", "error");
+    } finally {
+      setDeletingDomain(false);
     }
   }
 
@@ -1069,14 +1111,26 @@ function App() {
 
       {selectedDomain && (
         <>
-          <button className="drawer-scrim" type="button" aria-label="Close domain details" onClick={() => setSelectedDomain(null)} />
+          <button
+            className="drawer-scrim"
+            type="button"
+            aria-label="Close domain details"
+            disabled={deletingDomain}
+            onClick={() => setSelectedDomain(null)}
+          />
           <aside className="domain-drawer" aria-label={`${selectedName} details`}>
             <div className="drawer-header">
               <div>
                 <p className="section-label">Domain details</p>
                 <h2>{selectedName}</h2>
               </div>
-              <button className="icon-button" type="button" aria-label="Close domain details" onClick={() => setSelectedDomain(null)}>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="Close domain details"
+                disabled={deletingDomain}
+                onClick={() => setSelectedDomain(null)}
+              >
                 <X size={18} />
               </button>
             </div>
@@ -1161,10 +1215,69 @@ function App() {
               <div><span>Last checked</span><strong>{selectedResult?.checkedAt ? formatDate(selectedResult.checkedAt) : "No recent check"}</strong></div>
             </div>
 
-            <button className="button button-primary drawer-check" type="button" disabled={checkingDomain === selectedName || checkingAll} onClick={() => checkDomain(selectedName)}>
-              <RefreshCw className={checkingDomain === selectedName ? "spin" : ""} size={16} />
-              {checkingDomain === selectedName ? "Checking nameservers..." : "Run fresh check"}
-            </button>
+            {deleteConfirming ? (
+              <div className="delete-confirmation" role="alert">
+                <span className="delete-confirmation-icon">
+                  <Trash2 size={18} />
+                </span>
+                <div>
+                  <strong>Remove {selectedName}?</strong>
+                  <p>
+                    This permanently deletes its monitoring history and alerts
+                    from your account.
+                  </p>
+                </div>
+                <div className="delete-confirmation-actions">
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    disabled={deletingDomain}
+                    onClick={() => setDeleteConfirming(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="button button-danger"
+                    type="button"
+                    disabled={deletingDomain}
+                    onClick={removeDomain}
+                  >
+                    {deletingDomain ? (
+                      <RefreshCw className="spin" size={16} />
+                    ) : (
+                      <Trash2 size={16} />
+                    )}
+                    {deletingDomain ? "Removing..." : "Yes, remove domain"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="drawer-actions">
+                <button
+                  className="button button-primary drawer-check"
+                  type="button"
+                  disabled={checkingDomain === selectedName || checkingAll}
+                  onClick={() => checkDomain(selectedName)}
+                >
+                  <RefreshCw
+                    className={checkingDomain === selectedName ? "spin" : ""}
+                    size={16}
+                  />
+                  {checkingDomain === selectedName
+                    ? "Checking nameservers..."
+                    : "Run fresh check"}
+                </button>
+                <button
+                  className="button button-danger-outline"
+                  type="button"
+                  disabled={checkingDomain === selectedName || checkingAll}
+                  onClick={() => setDeleteConfirming(true)}
+                >
+                  <Trash2 size={16} />
+                  Remove from monitor
+                </button>
+              </div>
+            )}
           </aside>
         </>
       )}

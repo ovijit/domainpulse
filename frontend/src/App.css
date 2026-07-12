@@ -1530,9 +1530,79 @@
 .drawer-meta span { color: #8c928d; }
 .drawer-meta strong { color: #484e49; font-weight: 650; }
 
+.drawer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 24px;
+}
+
 .drawer-check {
   width: 100%;
+}
+
+.button-danger-outline {
+  width: 100%;
+  border: 1px solid #ecd4d0;
+  background: #fff;
+  color: var(--red);
+}
+
+.button-danger-outline:hover:not(:disabled) {
+  border-color: #d9aaa4;
+  background: var(--red-light);
+}
+
+.button-danger {
+  border: 1px solid var(--red);
+  background: var(--red);
+  color: #fff;
+}
+
+.button-danger:hover:not(:disabled) {
+  border-color: #913a33;
+  background: #913a33;
+}
+
+.delete-confirmation {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 11px;
   margin-top: 24px;
+  padding: 14px;
+  border: 1px solid #edcfcb;
+  border-radius: 11px;
+  background: var(--red-light);
+}
+
+.delete-confirmation-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--red);
+}
+
+.delete-confirmation strong {
+  color: #6f2f29;
+  font-size: 10px;
+}
+
+.delete-confirmation p {
+  margin: 5px 0 0;
+  color: #9a5b55;
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.delete-confirmation-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 4px;
 }
 
 .spin {
