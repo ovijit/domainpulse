@@ -115,10 +115,227 @@ function StatusBadge({ status }) {
   );
 }
 
+function PublicBrand({ onClick }) {
+  return (
+    <button className="public-brand" type="button" onClick={onClick}>
+      <span className="public-brand-mark" aria-hidden="true">
+        <Activity size={20} strokeWidth={2.5} />
+      </span>
+      <span>
+        <strong>DomainPulse</strong>
+        <small>Domain intelligence</small>
+      </span>
+    </button>
+  );
+}
+
+function LandingPage({ onLogin }) {
+  const previewDomains = [
+    { domain: "example.com", nameserver: "ns1.example-dns.com", status: "Healthy" },
+    { domain: "portfolio.xyz", nameserver: "ns2.cloudflare.com", status: "Healthy" },
+    { domain: "product.ai", nameserver: "Change detected", status: "Review" },
+  ];
+
+  return (
+    <main className="landing-shell">
+      <header className="public-header">
+        <PublicBrand onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} />
+        <nav className="public-navigation" aria-label="Public navigation">
+          <a href="#features">Features</a>
+          <a href="#workflow">How it works</a>
+        </nav>
+        <button className="public-login-button" type="button" onClick={onLogin}>
+          Log in
+          <ArrowUpRight size={15} />
+        </button>
+      </header>
+
+      <section className="landing-hero">
+        <div className="landing-hero-copy">
+          <span className="landing-kicker">
+            <span className="landing-live-dot" />
+            Portfolio monitoring for domain investors
+          </span>
+          <h1>Know when your domains change. Before it becomes a problem.</h1>
+          <p>
+            DomainPulse watches nameservers across your portfolio, keeps a
+            history of every change, and emails you when something needs your
+            attention.
+          </p>
+          <div className="landing-hero-actions">
+            <button className="landing-primary-action" type="button" onClick={onLogin}>
+              Start monitoring
+              <ArrowUpRight size={17} />
+            </button>
+            <a href="#features">Explore features</a>
+          </div>
+          <div className="landing-assurances">
+            <span><CheckCircle2 size={14} /> Google-secured accounts</span>
+            <span><CheckCircle2 size={14} /> No credit card required</span>
+          </div>
+        </div>
+
+        <div className="landing-preview" aria-label="DomainPulse dashboard preview">
+          <div className="landing-preview-topbar">
+            <div>
+              <span className="preview-logo"><Activity size={15} /></span>
+              <strong>Portfolio overview</strong>
+            </div>
+            <span className="preview-online"><span /> Live</span>
+          </div>
+          <div className="landing-preview-metrics">
+            <div><span>Domains</span><strong>645</strong></div>
+            <div><span>Healthy</span><strong>638</strong></div>
+            <div><span>Attention</span><strong>7</strong></div>
+          </div>
+          <div className="landing-preview-table">
+            <div className="preview-table-heading">
+              <span>Domain</span><span>Nameserver</span><span>Status</span>
+            </div>
+            {previewDomains.map((item) => (
+              <div className="preview-domain-row" key={item.domain}>
+                <span className="preview-domain-name">
+                  <small>{getDomainInitial(item.domain)}</small>
+                  <strong>{item.domain}</strong>
+                </span>
+                <code>{item.nameserver}</code>
+                <span className={item.status === "Review" ? "preview-review" : "preview-healthy"}>
+                  <i /> {item.status}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="landing-preview-footer">
+            <ShieldCheck size={15} /> Automatic checks running every six hours
+          </div>
+        </div>
+      </section>
+
+      <section className="landing-proof" aria-label="DomainPulse capabilities">
+        <div><strong>24/7</strong><span>Portfolio visibility</span></div>
+        <div><strong>100</strong><span>Domains per bulk import</span></div>
+        <div><strong>6h</strong><span>Automated check cycle</span></div>
+        <div><strong>Instant</strong><span>Email change alerts</span></div>
+      </section>
+
+      <section className="landing-features" id="features">
+        <div className="landing-section-heading">
+          <p className="eyebrow">Built for valuable portfolios</p>
+          <h2>Everything important, without the noise.</h2>
+          <p>Simple monitoring tools designed around how domain investors actually work.</p>
+        </div>
+        <div className="landing-feature-grid">
+          <article>
+            <span><Activity size={20} /></span>
+            <h3>Nameserver monitoring</h3>
+            <p>Establish a baseline and catch unexpected infrastructure changes automatically.</p>
+          </article>
+          <article>
+            <span><Copy size={20} /></span>
+            <h3>Bulk portfolio import</h3>
+            <p>Paste up to 100 domains at once with validation and duplicate protection.</p>
+          </article>
+          <article>
+            <span><Zap size={20} /></span>
+            <h3>Actionable email alerts</h3>
+            <p>Receive a clear alert when a domain moves away from its known nameservers.</p>
+          </article>
+        </div>
+      </section>
+
+      <section className="landing-workflow" id="workflow">
+        <div>
+          <p className="eyebrow">How it works</p>
+          <h2>Protection in three small steps.</h2>
+        </div>
+        <ol>
+          <li><span>01</span><div><strong>Add your portfolio</strong><p>Add one domain or paste a bulk list.</p></div></li>
+          <li><span>02</span><div><strong>Build the baseline</strong><p>DomainPulse records authoritative nameservers.</p></div></li>
+          <li><span>03</span><div><strong>Get alerted</strong><p>Unexpected changes arrive in your inbox.</p></div></li>
+        </ol>
+      </section>
+
+      <section className="landing-cta">
+        <div>
+          <p className="eyebrow">Your portfolio deserves a pulse</p>
+          <h2>Start monitoring your domains today.</h2>
+        </div>
+        <button type="button" onClick={onLogin}>
+          Continue with Google <ArrowUpRight size={17} />
+        </button>
+      </section>
+
+      <footer className="public-footer">
+        <PublicBrand onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} />
+        <span>© 2026 DomainPulse. Monitor with confidence.</span>
+      </footer>
+    </main>
+  );
+}
+
+function LoginPage({ onBack, onGoogleSuccess, authError, setAuthError }) {
+  return (
+    <main className="login-page">
+      <header className="public-header login-header">
+        <PublicBrand onClick={onBack} />
+        <button className="login-back-button" type="button" onClick={onBack}>
+          Back to home
+        </button>
+      </header>
+
+      <section className="login-layout">
+        <div className="login-story">
+          <p className="eyebrow">Welcome to DomainPulse</p>
+          <h1>Your domains. Your private workspace.</h1>
+          <p>
+            Sign in to monitor nameservers, import your portfolio, and keep
+            every domain separate from every other user.
+          </p>
+          <div className="login-benefits">
+            <span><ShieldCheck size={17} /> Secure HTTP-only session</span>
+            <span><Activity size={17} /> Automated portfolio monitoring</span>
+            <span><Zap size={17} /> Email alerts when nameservers change</span>
+          </div>
+        </div>
+
+        <section className="login-card">
+          <span className="login-card-mark" aria-hidden="true">
+            <Activity size={26} strokeWidth={2.5} />
+          </span>
+          <p className="eyebrow">Secure account access</p>
+          <h2>Log in to your workspace</h2>
+          <p className="login-card-intro">
+            Use the Google account connected to your DomainPulse portfolio.
+          </p>
+          <div className="google-login-wrap">
+            <GoogleLogin
+              onSuccess={onGoogleSuccess}
+              onError={() => setAuthError("Google sign-in was cancelled or failed.")}
+              useOneTap
+              theme="outline"
+              size="large"
+              shape="rectangular"
+              text="continue_with"
+            />
+          </div>
+          {authError && <p className="auth-error">{authError}</p>}
+          <div className="login-security-note">
+            <ShieldCheck size={14} />
+            <span>Your password is never shared with DomainPulse.</span>
+          </div>
+        </section>
+      </section>
+    </main>
+  );
+}
+
 function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState("");
+  const [publicRoute, setPublicRoute] = useState(() =>
+    window.location.hash === "#login" ? "login" : "home"
+  );
   const [domains, setDomains] = useState([]);
   const [domain, setDomain] = useState("");
   const [search, setSearch] = useState("");
@@ -246,6 +463,7 @@ function App() {
       }
 
       setUser(data.user);
+      window.location.hash = "overview";
     } catch (error) {
       console.error("Google sign-in error:", error);
       setAuthError(error.message || "Google sign-in failed.");
@@ -266,7 +484,23 @@ function App() {
       setCheckResults({});
       setSelectedDomain(null);
       setBackendConnected(false);
+      window.history.replaceState(null, "", window.location.pathname);
+      setPublicRoute("home");
     }
+  }
+
+  function openLoginPage() {
+    setAuthError("");
+    window.location.hash = "login";
+    setPublicRoute("login");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function openLandingPage() {
+    setAuthError("");
+    window.history.replaceState(null, "", window.location.pathname);
+    setPublicRoute("home");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function loadDomains(showLoader = true) {
@@ -309,6 +543,15 @@ function App() {
   useEffect(() => {
     loadSession();
     return () => window.clearTimeout(messageTimer.current);
+  }, []);
+
+  useEffect(() => {
+    function syncPublicRoute() {
+      setPublicRoute(window.location.hash === "#login" ? "login" : "home");
+    }
+
+    window.addEventListener("hashchange", syncPublicRoute);
+    return () => window.removeEventListener("hashchange", syncPublicRoute);
   }, []);
 
   useEffect(() => {
@@ -623,45 +866,16 @@ function App() {
     ? getDomainStatus(selectedDomain, checkResults)
     : "pending";
 
-  if (authLoading) {
-    return (
-      <main className="auth-shell">
-        <section className="auth-card auth-loading-card">
-          <span className="state-loader" />
-          <h1>Opening DomainPulse</h1>
-          <p>Checking your secure session.</p>
-        </section>
-      </main>
-    );
-  }
-
   if (!user) {
-    return (
-      <main className="auth-shell">
-        <section className="auth-card">
-          <span className="auth-brand-mark" aria-hidden="true">
-            <Activity size={28} strokeWidth={2.4} />
-          </span>
-          <p className="eyebrow">Domain intelligence</p>
-          <h1>Your domains. Your private workspace.</h1>
-          <p className="auth-intro">
-            Sign in to monitor nameservers and keep your portfolio separate from every other user.
-          </p>
-          <div className="google-login-wrap">
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={() => setAuthError("Google sign-in was cancelled or failed.")}
-              useOneTap
-              theme="outline"
-              size="large"
-              shape="rectangular"
-              text="continue_with"
-            />
-          </div>
-          {authError && <p className="auth-error">{authError}</p>}
-          <small className="auth-note">Your session is stored in a secure, HTTP-only cookie.</small>
-        </section>
-      </main>
+    return publicRoute === "login" ? (
+      <LoginPage
+        onBack={openLandingPage}
+        onGoogleSuccess={handleGoogleSuccess}
+        authError={authError}
+        setAuthError={setAuthError}
+      />
+    ) : (
+      <LandingPage onLogin={openLoginPage} />
     );
   }
 
