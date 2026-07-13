@@ -15,3 +15,4 @@ backend/.env
 frontend/.env
 backend/domainpulse.db
 backend/data/*.json
+frontend/.env.save

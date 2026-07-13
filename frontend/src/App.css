@@ -101,7 +101,7 @@
   display: block;
   margin-top: 20px;
   color: var(--subtle);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .auth-loading-card {
@@ -174,7 +174,7 @@
 
 .public-brand small {
   color: #8a908b;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 650;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -210,7 +210,7 @@
   border-radius: 9px;
   background: var(--charcoal);
   color: #fff;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   transition: transform 140ms ease, background 140ms ease;
 }
@@ -245,7 +245,7 @@
   border-radius: 999px;
   background: #f0f7f1;
   color: #4e6c57;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.03em;
 }
@@ -305,7 +305,7 @@
 .landing-hero-actions > a {
   border-bottom: 1px solid #bfc4bf;
   color: #5e655f;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -315,7 +315,7 @@
   gap: 17px;
   margin-top: 25px;
   color: #8a908b;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .landing-assurances span {
@@ -352,7 +352,7 @@
   align-items: center;
   gap: 9px;
   color: #343a35;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .preview-logo {
@@ -370,7 +370,7 @@
   align-items: center;
   gap: 6px;
   color: #63806b;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -403,7 +403,7 @@
 
 .landing-preview-metrics span {
   color: #969c97;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .landing-preview-metrics strong {
@@ -428,7 +428,7 @@
 .preview-table-heading {
   padding: 12px 7px 8px;
   color: #a0a5a1;
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -445,7 +445,7 @@
   align-items: center;
   gap: 8px;
   color: #353a36;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .preview-domain-name small {
@@ -456,14 +456,14 @@
   border-radius: 8px;
   background: #eff2ee;
   color: #647067;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
 }
 
 .preview-domain-row code {
   overflow: hidden;
   color: #858c86;
-  font-size: 7px;
+  font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -478,7 +478,7 @@
   border-radius: 999px;
   background: var(--green-light);
   color: var(--green);
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 700;
 }
 
@@ -500,7 +500,7 @@
   border-top: 1px solid #eceeea;
   border-bottom: 0;
   color: #858c86;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .landing-preview-footer svg {
@@ -611,7 +611,7 @@
 .landing-feature-grid p {
   margin: 10px 0 0;
   color: #858b86;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.7;
 }
 
@@ -655,7 +655,7 @@
   border-radius: 999px;
   background: var(--green);
   color: #fff;
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 750;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -664,7 +664,7 @@
 .pricing-name {
   margin: 0;
   color: #4c534d;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -685,14 +685,14 @@
 
 .pricing-price span {
   color: #989d99;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .pricing-description {
   min-height: 42px;
   margin: 12px 0 0;
   color: #858b86;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.6;
 }
 
@@ -712,7 +712,7 @@
   align-items: center;
   gap: 7px;
   color: #656c66;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .pricing-card li svg {
@@ -725,7 +725,7 @@
   border-radius: 9px;
   background: #fafbf9;
   color: #343934;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -738,7 +738,7 @@
 .pricing-note {
   margin: 17px 0 0;
   color: #9a9f9b;
-  font-size: 8px;
+  font-size: 10px;
   text-align: center;
 }
 
@@ -777,7 +777,7 @@
   border-radius: 10px;
   background: var(--charcoal);
   color: #fff;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -789,7 +789,7 @@
 .landing-workflow li p {
   margin: 7px 0 0;
   color: #8a908b;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .landing-cta {
@@ -825,7 +825,7 @@
   border-radius: 10px;
   background: #f3f6f2;
   color: #202421;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -840,7 +840,7 @@
   padding: 0 34px;
   border-top: 1px solid #dde1da;
   color: #929793;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .login-page {
@@ -904,7 +904,7 @@
   align-items: center;
   gap: 10px;
   color: #656c66;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -941,7 +941,7 @@
 .login-card-intro {
   margin: 13px 0 25px;
   color: #858b86;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.65;
 }
 
@@ -957,7 +957,7 @@
   padding-top: 17px;
   border-top: 1px solid #eceeea;
   color: #929793;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .login-security-note svg {
@@ -1038,7 +1038,7 @@
 .nav-label {
   margin: 0 10px 9px;
   color: #636a65;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1108,13 +1108,13 @@
   justify-content: space-between;
   gap: 8px;
   color: #a7aea8;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
 }
 
 .sidebar-plan-heading strong {
   color: #767e77;
-  font-size: 7px;
+  font-size: 9px;
 }
 
 .sidebar-plan-meter {
@@ -1134,13 +1134,13 @@
 
 .sidebar-plan-card > button {
   width: 100%;
-  min-height: 29px;
+  min-height: 32px;
   margin-top: 10px;
   border: 1px solid #3b423c;
   border-radius: 7px;
   background: #2a302b;
   color: #aab1ab;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -1173,14 +1173,14 @@
 }
 
 .service-card strong {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
 }
 
 .service-card span:not(.live-indicator) {
   overflow: hidden;
   color: #707771;
-  font-size: 8px;
+  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1230,7 +1230,7 @@
 }
 
 .profile-card strong {
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .profile-card small {
@@ -1238,7 +1238,7 @@
   max-width: 125px;
   overflow: hidden;
   color: #6f7670;
-  font-size: 8px;
+  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1286,7 +1286,7 @@
 .section-label {
   margin: 0 0 7px;
   color: #7d837e;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 750;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1321,7 +1321,7 @@
   align-items: center;
   gap: 6px;
   color: #898f8a;
-  font-size: 10px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -1333,7 +1333,7 @@
   gap: 8px;
   padding: 0 15px;
   border-radius: 9px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
   transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
 }
@@ -1460,7 +1460,7 @@
   align-items: center;
   gap: 8px;
   color: #6d736e;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -1514,7 +1514,7 @@
   border-radius: 999px;
   background: var(--green-light);
   color: var(--green);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -1522,7 +1522,7 @@
   overflow: hidden;
   margin: 7px 0 0;
   color: #969b97;
-  font-size: 9px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1564,7 +1564,7 @@
 .activity-strip h2,
 .drawer-header h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 650;
   letter-spacing: -0.35px;
 }
@@ -1572,7 +1572,7 @@
 .add-domain-copy p {
   margin: 4px 0 0;
   color: #818982;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .domain-form {
@@ -1613,7 +1613,7 @@
   outline: 0;
   background: transparent;
   color: #f5f7f5;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .domain-input input::placeholder {
@@ -1669,7 +1669,7 @@
 .search-field,
 .filter-field {
   display: flex;
-  min-height: 37px;
+  min-height: 40px;
   align-items: center;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1698,7 +1698,7 @@
   outline: 0;
   background: transparent;
   color: #282c29;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .search-field input::placeholder {
@@ -1712,7 +1712,7 @@
   outline: 0;
   background: transparent;
   color: #5f6560;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .table-scroll {
@@ -1732,12 +1732,12 @@
 }
 
 .domain-table-head {
-  min-height: 38px;
+  min-height: 42px;
   padding: 0 20px;
   border-bottom: 1px solid #e9ebe7;
   background: #fafbf9;
   color: #929893;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 750;
   letter-spacing: 0.075em;
   text-transform: uppercase;
@@ -1796,7 +1796,7 @@
 .nameserver-summary strong {
   overflow: hidden;
   color: #292d2a;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1806,7 +1806,7 @@
 .nameserver-summary small {
   overflow: hidden;
   color: #9aa09b;
-  font-size: 8px;
+  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1816,7 +1816,7 @@
   align-items: center;
   gap: 6px;
   color: #858b86;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .checked-cell svg {
@@ -1825,13 +1825,13 @@
 
 .status-badge {
   display: inline-flex;
-  min-height: 24px;
+  min-height: 28px;
   align-items: center;
   gap: 6px;
   padding: 0 8px;
   border: 1px solid;
   border-radius: 999px;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -1875,7 +1875,7 @@
 .icon-button,
 .details-button {
   display: inline-flex;
-  min-height: 31px;
+  min-height: 34px;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--line);
@@ -1892,7 +1892,7 @@
 .details-button {
   gap: 3px;
   padding: 0 9px;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 650;
 }
 
@@ -1909,7 +1909,7 @@
 
 .table-footer {
   display: flex;
-  min-height: 45px;
+  min-height: 48px;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
@@ -1917,7 +1917,7 @@
   border-top: 1px solid #e9ebe7;
   background: #fafbf9;
   color: #929893;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .table-footer span:last-child {
@@ -1961,7 +1961,7 @@
 
 .state-panel h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 650;
 }
 
@@ -1969,7 +1969,7 @@
   max-width: 360px;
   margin: 7px 0 0;
   color: #929793;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.55;
 }
 
@@ -1982,7 +1982,7 @@
   border: 0;
   background: transparent;
   color: var(--green);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -2018,7 +2018,7 @@
 .activity-strip p {
   margin: 4px 0 0;
   color: #858b86;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .activity-strip > strong {
@@ -2089,7 +2089,7 @@
 .billing-modal-header p:last-child {
   margin: 7px 0 0;
   color: #878d88;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .billing-test-banner {
@@ -2102,7 +2102,7 @@
   border-radius: 9px;
   background: var(--amber-light);
   color: #8f641f;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .current-subscription-card {
@@ -2126,12 +2126,12 @@
 .current-subscription-card span,
 .current-subscription-card small {
   color: #869087;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .current-subscription-card strong {
   color: #3a563f;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .current-subscription-card > button {
@@ -2141,7 +2141,7 @@
   border-radius: 8px;
   background: #fff;
   color: var(--red);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -2178,7 +2178,7 @@
   justify-content: space-between;
   gap: 7px;
   color: #4d534e;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 750;
 }
 
@@ -2187,7 +2187,7 @@
   border-radius: 999px;
   background: var(--green-light);
   color: var(--green);
-  font-size: 6px;
+  font-size: 8px;
   text-transform: uppercase;
 }
 
@@ -2207,7 +2207,7 @@
 .billing-plan-price span,
 .billing-plan-card p {
   color: #8d938e;
-  font-size: 7px;
+  font-size: 10px;
 }
 
 .billing-plan-card p {
@@ -2221,7 +2221,7 @@
   border-radius: 8px;
   background: #fff;
   color: #3e443f;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -2240,7 +2240,7 @@
   padding-top: 14px;
   border-top: 1px solid var(--line);
   color: #969b97;
-  font-size: 8px;
+  font-size: 10px;
   text-align: center;
 }
 
@@ -2277,7 +2277,7 @@
 .bulk-modal-header p:last-child {
   margin: 7px 0 0;
   color: #858b86;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .bulk-form {
@@ -2289,7 +2289,7 @@
 .bulk-form > label {
   margin-bottom: 8px;
   color: #505651;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -2304,7 +2304,7 @@
   background: #fafbf9;
   color: #313632;
   font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.65;
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
@@ -2325,7 +2325,7 @@
   gap: 20px;
   margin-top: 9px;
   color: #929893;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .bulk-import-meta > span:first-child {
@@ -2355,7 +2355,7 @@
   border-radius: 9px;
   background: #fafbf9;
   color: #737a74;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -2438,7 +2438,7 @@
 .drawer-status-card p {
   margin: 8px 0 0;
   color: #7d837e;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.55;
 }
 
@@ -2452,7 +2452,7 @@
   justify-content: space-between;
   margin-bottom: 10px;
   color: #4f5550;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -2464,7 +2464,7 @@
   border-radius: 999px;
   background: #eef1ed;
   color: #7f8580;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .nameserver-list {
@@ -2490,7 +2490,7 @@
   overflow: hidden;
   color: #3c423d;
   font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 9px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2517,7 +2517,7 @@
   border: 1px dashed var(--line-strong);
   border-radius: 10px;
   color: #949a95;
-  font-size: 9px;
+  font-size: 11px;
   text-align: center;
 }
 
@@ -2531,7 +2531,7 @@
   border: 1px dashed var(--line-strong);
   border-radius: 10px;
   color: #8b918c;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .history-loading .state-loader {
@@ -2577,14 +2577,14 @@
 
 .history-event strong {
   color: #3f4540;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
 }
 
 .history-event small {
   margin-top: 3px;
   color: #929893;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .history-event p {
@@ -2593,7 +2593,7 @@
   margin: 9px 0 0;
   color: #747b75;
   font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 8px;
+  font-size: 10px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -2617,7 +2617,7 @@
   justify-content: space-between;
   gap: 20px;
   border-bottom: 1px solid #eaede8;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .drawer-meta span { color: #8c928d; }
@@ -2680,7 +2680,7 @@
 
 .delete-confirmation strong {
   color: #6f2f29;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .delete-confirmation p {
