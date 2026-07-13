@@ -94,3 +94,31 @@ test("bulk import rejects more than the maximum number of entries", async () => 
       error instanceof DomainImportError && error.statusCode === 400
   );
 });
+
+test("bulk import rejects additions above the active plan limit", async () => {
+  const service = createDomainImportService({
+    pool: {
+      async query(sql) {
+        if (sql.startsWith("SELECT domain")) return { rows: [] };
+        if (sql.startsWith("SELECT COUNT")) {
+          return { rows: [{ domain_count: 4 }] };
+        }
+        throw new Error("Insert should not run above the plan limit");
+      },
+    },
+    monitoringService: {},
+    emailService: {},
+  });
+
+  await assert.rejects(
+    service.importDomains({
+      entries: ["fifth.com", "sixth.com"],
+      user: { id: 7 },
+      domainLimit: 5,
+    }),
+    (error) =>
+      error instanceof DomainImportError &&
+      error.code === "domain_limit_reached" &&
+      error.statusCode === 403
+  );
+});

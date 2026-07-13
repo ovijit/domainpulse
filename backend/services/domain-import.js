@@ -3,10 +3,11 @@ const DOMAIN_PATTERN = /^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,}$/i;
 export const MAX_BULK_DOMAINS = 100;
 
 export class DomainImportError extends Error {
-  constructor(message, statusCode = 400) {
+  constructor(message, statusCode = 400, code = "domain_import_error") {
     super(message);
     this.name = "DomainImportError";
     this.statusCode = statusCode;
+    this.code = code;
   }
 }
 
@@ -45,7 +46,7 @@ export function createDomainImportService({
   monitoringService,
   emailService,
 }) {
-  async function importDomains({ entries, user }) {
+  async function importDomains({ entries, user, domainLimit = Infinity }) {
     if (!Array.isArray(entries) || entries.length === 0) {
       throw new DomainImportError("Add at least one domain");
     }
@@ -98,6 +99,22 @@ export function createDomainImportService({
     const candidates = validDomains.filter(
       (domain) => !existingDomains.has(domain)
     );
+
+    if (Number.isFinite(domainLimit) && candidates.length > 0) {
+      const usageResult = await pool.query(
+        "SELECT COUNT(*)::INTEGER AS domain_count FROM domains WHERE user_id = $1",
+        [user.id]
+      );
+      const currentCount = Number(usageResult.rows[0]?.domain_count || 0);
+
+      if (currentCount + candidates.length > domainLimit) {
+        throw new DomainImportError(
+          `This import would exceed your ${domainLimit}-domain plan limit`,
+          403,
+          "domain_limit_reached"
+        );
+      }
+    }
 
     let added = [];
 

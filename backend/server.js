@@ -8,6 +8,10 @@ import crypto from "crypto";
 import { OAuth2Client } from "google-auth-library";
 import { createEmailService } from "./services/email.js";
 import {
+  BillingError,
+  createBillingService,
+} from "./services/billing.js";
+import {
   createDomainImportService,
   DomainImportError,
 } from "./services/domain-import.js";
@@ -57,7 +61,15 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+app.use(
+  express.json({
+    verify(req, res, buffer) {
+      if (req.originalUrl === "/api/webhooks/razorpay") {
+        req.rawBody = Buffer.from(buffer);
+      }
+    },
+  })
+);
 app.use(cookieParser());
 
 const pool = new Pool({
@@ -73,6 +85,7 @@ const domainImportService = createDomainImportService({
   monitoringService,
   emailService,
 });
+const billingService = createBillingService({ pool });
 
 function sessionCookieOptions() {
   return {
@@ -179,6 +192,23 @@ async function setupDatabase() {
 
     CREATE INDEX IF NOT EXISTS domain_alerts_user_created_idx
       ON domain_alerts (user_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS user_subscriptions (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+      plan_key TEXT NOT NULL CHECK (plan_key IN ('starter', 'pro', 'portfolio')),
+      razorpay_plan_id TEXT NOT NULL,
+      razorpay_subscription_id TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'created',
+      current_start TIMESTAMPTZ,
+      current_end TIMESTAMPTZ,
+      cancel_at_cycle_end BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS user_subscriptions_status_idx
+      ON user_subscriptions (status);
   `);
 }
 
@@ -335,6 +365,97 @@ app.post("/api/auth/logout", (req, res) => {
   res.json({ message: "Signed out" });
 });
 
+app.get("/api/billing/plans", (req, res) => {
+  res.json({ plans: billingService.publicPlans() });
+});
+
+app.get("/api/billing/subscription", requireAuth, async (req, res) => {
+  try {
+    res.json(await billingService.getSummary(req.user.id));
+  } catch (error) {
+    console.error("Fetch billing summary error:", error);
+    res.status(500).json({ message: "Failed to fetch billing details" });
+  }
+});
+
+app.post("/api/billing/subscriptions", requireAuth, async (req, res) => {
+  try {
+    const result = await billingService.createSubscription({
+      user: req.user,
+      planKey: req.body.plan_key,
+    });
+    res.status(201).json(result);
+  } catch (error) {
+    if (error instanceof BillingError) {
+      return res
+        .status(error.statusCode)
+        .json({ message: error.message, code: error.code });
+    }
+    console.error("Create subscription error:", error);
+    res.status(500).json({ message: "Failed to create subscription" });
+  }
+});
+
+app.post("/api/billing/verify", requireAuth, async (req, res) => {
+  try {
+    const result = await billingService.verifyCheckout({
+      userId: req.user.id,
+      paymentId: req.body.razorpay_payment_id,
+      subscriptionId: req.body.razorpay_subscription_id,
+      signature: req.body.razorpay_signature,
+    });
+    res.json({ message: "Subscription verified", billing: result });
+  } catch (error) {
+    if (error instanceof BillingError) {
+      return res
+        .status(error.statusCode)
+        .json({ message: error.message, code: error.code });
+    }
+    console.error("Verify subscription error:", error);
+    res.status(500).json({ message: "Failed to verify subscription" });
+  }
+});
+
+app.post("/api/billing/cancel", requireAuth, async (req, res) => {
+  try {
+    const result = await billingService.cancelSubscription(req.user.id);
+    res.json({
+      message: "Subscription will cancel at the end of the billing cycle",
+      billing: result,
+    });
+  } catch (error) {
+    if (error instanceof BillingError) {
+      return res
+        .status(error.statusCode)
+        .json({ message: error.message, code: error.code });
+    }
+    console.error("Cancel subscription error:", error);
+    res.status(500).json({ message: "Failed to cancel subscription" });
+  }
+});
+
+app.post("/api/webhooks/razorpay", async (req, res) => {
+  try {
+    if (!req.rawBody) {
+      return res.status(400).json({ message: "Raw webhook body is required" });
+    }
+
+    const result = await billingService.handleWebhook({
+      rawBody: req.rawBody,
+      signature: req.get("x-razorpay-signature") || "",
+    });
+    res.json(result);
+  } catch (error) {
+    if (error instanceof BillingError) {
+      return res
+        .status(error.statusCode)
+        .json({ message: error.message, code: error.code });
+    }
+    console.error("Razorpay webhook error:", error);
+    res.status(500).json({ message: "Webhook processing failed" });
+  }
+});
+
 app.get("/api/domains", requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
@@ -362,6 +483,8 @@ app.post("/api/domains", requireAuth, async (req, res) => {
     if (!/^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,}$/i.test(cleanDomain)) {
       return res.status(400).json({ message: "Enter a valid domain" });
     }
+
+    await billingService.assertCapacity(req.user.id, 1);
 
     const result = await pool.query(
       `
@@ -394,6 +517,12 @@ app.post("/api/domains", requireAuth, async (req, res) => {
       email_status: confirmationEmail.status,
     });
   } catch (error) {
+    if (error instanceof BillingError) {
+      return res
+        .status(error.statusCode)
+        .json({ message: error.message, code: error.code });
+    }
+
     if (error.code === "23505") {
       return res.status(409).json({ message: "Domain already exists in your account" });
     }
@@ -405,9 +534,13 @@ app.post("/api/domains", requireAuth, async (req, res) => {
 
 app.post("/api/domains/bulk", requireAuth, async (req, res) => {
   try {
+    const billing = await billingService.getSummary(req.user.id);
     const result = await domainImportService.importDomains({
       entries: req.body.domains,
       user: req.user,
+      domainLimit: billing.enforcement_enabled
+        ? billing.plan.domain_limit
+        : Infinity,
     });
 
     res.status(result.added.length > 0 ? 201 : 200).json({
@@ -418,7 +551,9 @@ app.post("/api/domains/bulk", requireAuth, async (req, res) => {
     });
   } catch (error) {
     if (error instanceof DomainImportError) {
-      return res.status(error.statusCode).json({ message: error.message });
+      return res
+        .status(error.statusCode)
+        .json({ message: error.message, code: error.code });
     }
 
     console.error("Bulk domain import error:", error);

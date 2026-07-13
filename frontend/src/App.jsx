@@ -29,6 +29,59 @@ const API_URL = (
   import.meta.env.VITE_API_URL || "http://localhost:5001"
 ).replace(/\/$/, "");
 const DOMAIN_PATTERN = /^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,}$/i;
+const PRICING_PLANS = [
+  {
+    key: "free",
+    name: "Free",
+    price: 0,
+    domainLimit: 5,
+    description: "Start monitoring a small portfolio.",
+    features: ["5 monitored domains", "Automated checks", "Email alerts"],
+  },
+  {
+    key: "starter",
+    name: "Starter",
+    price: 9,
+    domainLimit: 25,
+    description: "For a focused, growing portfolio.",
+    features: ["25 monitored domains", "Bulk import", "Nameserver history"],
+  },
+  {
+    key: "pro",
+    name: "Pro",
+    price: 19,
+    domainLimit: 100,
+    description: "For active domain investors.",
+    features: ["100 monitored domains", "Bulk import", "Nameserver history"],
+    recommended: true,
+  },
+  {
+    key: "portfolio",
+    name: "Portfolio",
+    price: 49,
+    domainLimit: 1000,
+    description: "For serious portfolio operators.",
+    features: ["1,000 monitored domains", "Bulk import", "Full history"],
+  },
+];
+
+let razorpayScriptPromise;
+
+function loadRazorpayCheckout() {
+  if (window.Razorpay) return Promise.resolve();
+  if (razorpayScriptPromise) return razorpayScriptPromise;
+
+  razorpayScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("Razorpay Checkout could not load"));
+    document.body.appendChild(script);
+  });
+
+  return razorpayScriptPromise;
+}
 
 function normalizeDomain(value) {
   return value
@@ -143,6 +196,7 @@ function LandingPage({ onLogin }) {
         <nav className="public-navigation" aria-label="Public navigation">
           <a href="#features">Features</a>
           <a href="#workflow">How it works</a>
+          <a href="#pricing">Pricing</a>
         </nav>
         <button className="public-login-button" type="button" onClick={onLogin}>
           Log in
@@ -241,6 +295,39 @@ function LandingPage({ onLogin }) {
             <p>Receive a clear alert when a domain moves away from its known nameservers.</p>
           </article>
         </div>
+      </section>
+
+      <section className="landing-pricing" id="pricing">
+        <div className="landing-section-heading">
+          <p className="eyebrow">Simple monthly pricing</p>
+          <h2>Choose the coverage your portfolio needs.</h2>
+          <p>Start free, then upgrade as the number of domains you protect grows.</p>
+        </div>
+        <div className="pricing-grid">
+          {PRICING_PLANS.map((plan) => (
+            <article
+              className={`pricing-card ${plan.recommended ? "pricing-card-featured" : ""}`}
+              key={plan.key}
+            >
+              {plan.recommended && <span className="pricing-recommended">Most popular</span>}
+              <p className="pricing-name">{plan.name}</p>
+              <div className="pricing-price">
+                <strong>${plan.price}</strong>
+                <span>{plan.price ? "/ month" : "forever"}</span>
+              </div>
+              <p className="pricing-description">{plan.description}</p>
+              <ul>
+                {plan.features.map((feature) => (
+                  <li key={feature}><Check size={14} /> {feature}</li>
+                ))}
+              </ul>
+              <button type="button" onClick={onLogin}>
+                {plan.key === "free" ? "Start free" : `Choose ${plan.name}`}
+              </button>
+            </article>
+          ))}
+        </div>
+        <p className="pricing-note">Paid plans are billed monthly. Cancel at the end of any billing cycle.</p>
       </section>
 
       <section className="landing-workflow" id="workflow">
@@ -358,6 +445,11 @@ function App() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const [billing, setBilling] = useState(null);
+  const [billingOpen, setBillingOpen] = useState(false);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [checkoutPlan, setCheckoutPlan] = useState("");
+  const [cancelingSubscription, setCancelingSubscription] = useState(false);
   const messageTimer = useRef(null);
   const domainInput = useRef(null);
 
@@ -484,6 +576,8 @@ function App() {
       setCheckResults({});
       setSelectedDomain(null);
       setBackendConnected(false);
+      setBilling(null);
+      setBillingOpen(false);
       window.history.replaceState(null, "", window.location.pathname);
       setPublicRoute("home");
     }
@@ -540,6 +634,122 @@ function App() {
     }
   }
 
+  async function loadBilling() {
+    try {
+      setBillingLoading(true);
+      const response = await fetch(`${API_URL}/api/billing/subscription`, {
+        credentials: "include",
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || "Could not load billing details.");
+      }
+
+      setBilling(data);
+    } catch (error) {
+      console.error("Load billing error:", error);
+    } finally {
+      setBillingLoading(false);
+    }
+  }
+
+  async function verifySubscription(checkoutResponse) {
+    const response = await fetch(`${API_URL}/api/billing/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(checkoutResponse),
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data.message || "Subscription verification failed.");
+    }
+
+    setBilling(data.billing);
+    setBillingOpen(false);
+    showMessage(`${data.billing.plan.name} plan activated.`);
+  }
+
+  async function startSubscription(planKey) {
+    if (planKey === "free") return;
+
+    try {
+      setCheckoutPlan(planKey);
+      const response = await fetch(`${API_URL}/api/billing/subscriptions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ plan_key: planKey }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || "Could not start checkout.");
+      }
+
+      await loadRazorpayCheckout();
+      const checkout = new window.Razorpay({
+        key: data.key_id,
+        subscription_id: data.subscription_id,
+        name: "DomainPulse",
+        description: `${data.plan.name} monthly plan`,
+        prefill: data.customer,
+        notes: { plan_key: data.plan.key },
+        theme: { color: "#181b19" },
+        handler: async (checkoutResponse) => {
+          try {
+            await verifySubscription(checkoutResponse);
+          } catch (error) {
+            console.error("Subscription verification error:", error);
+            showMessage(error.message, "error");
+          }
+        },
+      });
+      checkout.on("payment.failed", (event) => {
+        showMessage(
+          event.error?.description || "Payment authorisation failed.",
+          "error"
+        );
+      });
+      checkout.open();
+    } catch (error) {
+      console.error("Start subscription error:", error);
+      showMessage(error.message || "Could not start checkout.", "error");
+    } finally {
+      setCheckoutPlan("");
+    }
+  }
+
+  async function cancelSubscription() {
+    const confirmed = window.confirm(
+      "Cancel this subscription at the end of the current billing cycle?"
+    );
+    if (!confirmed) return;
+
+    try {
+      setCancelingSubscription(true);
+      const response = await fetch(`${API_URL}/api/billing/cancel`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || "Could not cancel the subscription.");
+      }
+
+      setBilling(data.billing);
+      showMessage(data.message);
+    } catch (error) {
+      console.error("Cancel subscription error:", error);
+      showMessage(error.message || "Could not cancel the subscription.", "error");
+    } finally {
+      setCancelingSubscription(false);
+    }
+  }
+
   useEffect(() => {
     loadSession();
     return () => window.clearTimeout(messageTimer.current);
@@ -557,6 +767,7 @@ function App() {
   useEffect(() => {
     if (user) {
       loadDomains();
+      loadBilling();
     } else if (!authLoading) {
       setLoading(false);
     }
@@ -568,12 +779,13 @@ function App() {
         if (!deletingDomain) setSelectedDomain(null);
         setMobileMenuOpen(false);
         if (!bulkImporting) setBulkOpen(false);
+        if (!checkoutPlan) setBillingOpen(false);
       }
     }
 
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [bulkImporting, deletingDomain]);
+  }, [bulkImporting, checkoutPlan, deletingDomain]);
 
   useEffect(() => {
     setDeleteConfirming(false);
@@ -859,6 +1071,20 @@ function App() {
     }
   }
 
+  const billingPlan = billing?.plan || {
+    key: "free",
+    name: "Free",
+    domain_limit: 5,
+  };
+  const billingUsage = billing?.usage || {
+    domains: domainCount,
+    domain_limit: billingPlan.domain_limit,
+    remaining_domains: Math.max(billingPlan.domain_limit - domainCount, 0),
+  };
+  const usagePercentage = Math.min(
+    (billingUsage.domains / Math.max(billingUsage.domain_limit, 1)) * 100,
+    100
+  );
   const selectedName = selectedDomain ? getDomainName(selectedDomain) : "";
   const selectedResult = selectedName ? checkResults[selectedName] : null;
   const selectedNameservers = selectedResult?.nameservers || getNameservers(selectedDomain);
@@ -918,10 +1144,31 @@ function App() {
             <Activity size={17} />
             <span>Activity</span>
           </a>
+          <button
+            className="nav-item"
+            type="button"
+            onClick={() => setBillingOpen(true)}
+          >
+            <Zap size={17} />
+            <span>Plans & billing</span>
+          </button>
 
         </nav>
 
         <div className="sidebar-footer">
+          <div className="sidebar-plan-card">
+            <div className="sidebar-plan-heading">
+              <span>{billingLoading ? "Loading plan" : `${billingPlan.name} plan`}</span>
+              <strong>{billingUsage.domains}/{billingUsage.domain_limit}</strong>
+            </div>
+            <div className="sidebar-plan-meter" aria-hidden="true">
+              <span style={{ width: `${usagePercentage}%` }} />
+            </div>
+            <button type="button" onClick={() => setBillingOpen(true)}>
+              {billingPlan.key === "portfolio" ? "Manage billing" : "View plans"}
+            </button>
+          </div>
+
           <div className={`service-card ${backendConnected ? "service-online" : "service-offline"}`}>
             <div className="service-icon">
               <CloudCog size={17} />
@@ -1224,6 +1471,124 @@ function App() {
           <strong>{Object.keys(checkResults).length}</strong>
         </section>
       </main>
+
+      {billingOpen && (
+        <>
+          <button
+            className="billing-modal-scrim"
+            type="button"
+            aria-label="Close plans and billing"
+            disabled={Boolean(checkoutPlan)}
+            onClick={() => setBillingOpen(false)}
+          />
+          <section
+            className="billing-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="billing-modal-title"
+          >
+            <header className="billing-modal-header">
+              <div>
+                <p className="section-label">Plans & billing</p>
+                <h2 id="billing-modal-title">Protect the right-sized portfolio.</h2>
+                <p>
+                  Current usage: {billingUsage.domains} of {billingUsage.domain_limit} domains.
+                </p>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="Close plans and billing"
+                disabled={Boolean(checkoutPlan)}
+                onClick={() => setBillingOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </header>
+
+            {!billing?.enforcement_enabled && (
+              <div className="billing-test-banner">
+                <Zap size={16} />
+                <span>
+                  Test rollout: plan limits are visible but not enforced yet.
+                </span>
+              </div>
+            )}
+
+            {billing?.subscription && (
+              <div className="current-subscription-card">
+                <div>
+                  <span>Current subscription</span>
+                  <strong>{billingPlan.name} · {billing.subscription.status}</strong>
+                  {billing.subscription.current_end && (
+                    <small>
+                      Current cycle ends {formatDate(billing.subscription.current_end)}
+                    </small>
+                  )}
+                </div>
+                {billing.subscription.cancel_at_cycle_end ? (
+                  <span className="cancellation-scheduled">Cancellation scheduled</span>
+                ) : billingPlan.key !== "free" ? (
+                  <button
+                    type="button"
+                    disabled={cancelingSubscription}
+                    onClick={cancelSubscription}
+                  >
+                    {cancelingSubscription ? "Cancelling..." : "Cancel at cycle end"}
+                  </button>
+                ) : null}
+              </div>
+            )}
+
+            <div className="billing-plan-grid">
+              {PRICING_PLANS.map((plan) => {
+                const isCurrent = billingPlan.key === plan.key;
+                const isPaid = plan.key !== "free";
+                const checkoutDisabled =
+                  isCurrent ||
+                  !isPaid ||
+                  !billing?.checkout_configured ||
+                  Boolean(checkoutPlan) ||
+                  (billing?.subscription && billingPlan.key !== "free");
+
+                return (
+                  <article
+                    className={`billing-plan-card ${plan.recommended ? "billing-plan-featured" : ""}`}
+                    key={plan.key}
+                  >
+                    <div className="billing-plan-topline">
+                      <span>{plan.name}</span>
+                      {plan.recommended && <small>Popular</small>}
+                    </div>
+                    <div className="billing-plan-price">
+                      <strong>${plan.price}</strong>
+                      <span>{plan.price ? "/mo" : "forever"}</span>
+                    </div>
+                    <p>Up to {plan.domainLimit.toLocaleString()} domains</p>
+                    <button
+                      type="button"
+                      disabled={checkoutDisabled}
+                      onClick={() => startSubscription(plan.key)}
+                    >
+                      {checkoutPlan === plan.key
+                        ? "Opening checkout..."
+                        : isCurrent
+                          ? "Current plan"
+                          : !billing?.checkout_configured
+                            ? "Setup required"
+                            : `Choose ${plan.name}`}
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+
+            <footer className="billing-modal-footer">
+              Razorpay securely processes payment details. DomainPulse never stores card data.
+            </footer>
+          </section>
+        </>
+      )}
 
       {bulkOpen && (
         <>
