@@ -65,22 +65,46 @@ const PRICING_PLANS = [
   },
 ];
 
-let razorpayScriptPromise;
+let paddleScriptPromise;
+let paddleInitializedToken = "";
+let paddleEventHandler = null;
 
-function loadRazorpayCheckout() {
-  if (window.Razorpay) return Promise.resolve();
-  if (razorpayScriptPromise) return razorpayScriptPromise;
+function loadPaddleScript() {
+  if (window.Paddle) return Promise.resolve();
+  if (paddleScriptPromise) return paddleScriptPromise;
 
-  razorpayScriptPromise = new Promise((resolve, reject) => {
+  paddleScriptPromise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.src = "https://cdn.paddle.com/paddle/v2/paddle.js";
     script.async = true;
     script.onload = resolve;
-    script.onerror = () => reject(new Error("Razorpay Checkout could not load"));
+    script.onerror = () => reject(new Error("Paddle Checkout could not load"));
     document.body.appendChild(script);
   });
 
-  return razorpayScriptPromise;
+  return paddleScriptPromise;
+}
+
+async function initializePaddleCheckout({ clientToken, environment, onEvent }) {
+  await loadPaddleScript();
+  paddleEventHandler = onEvent;
+
+  if (paddleInitializedToken) {
+    if (paddleInitializedToken !== clientToken) {
+      throw new Error("Paddle Checkout configuration changed. Refresh the page.");
+    }
+    return;
+  }
+
+  if (environment === "sandbox") {
+    window.Paddle.Environment.set("sandbox");
+  }
+
+  window.Paddle.Initialize({
+    token: clientToken,
+    eventCallback: (event) => paddleEventHandler?.(event),
+  });
+  paddleInitializedToken = clientToken;
 }
 
 function normalizeDomain(value) {
@@ -634,9 +658,9 @@ function App() {
     }
   }
 
-  async function loadBilling() {
+  async function loadBilling(showLoader = true) {
     try {
-      setBillingLoading(true);
+      if (showLoader) setBillingLoading(true);
       const response = await fetch(`${API_URL}/api/billing/subscription`, {
         credentials: "include",
       });
@@ -647,29 +671,32 @@ function App() {
       }
 
       setBilling(data);
+      return data;
     } catch (error) {
       console.error("Load billing error:", error);
+      return null;
     } finally {
-      setBillingLoading(false);
+      if (showLoader) setBillingLoading(false);
     }
   }
 
-  async function verifySubscription(checkoutResponse) {
-    const response = await fetch(`${API_URL}/api/billing/verify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(checkoutResponse),
-    });
-    const data = await response.json().catch(() => ({}));
+  async function refreshBillingAfterCheckout(planKey) {
+    showMessage("Payment received. Activating your plan...");
 
-    if (!response.ok) {
-      throw new Error(data.message || "Subscription verification failed.");
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      const nextBilling = await loadBilling(false);
+
+      if (nextBilling?.plan?.key === planKey) {
+        setBillingOpen(false);
+        showMessage(`${nextBilling.plan.name} plan activated.`);
+        return;
+      }
     }
 
-    setBilling(data.billing);
-    setBillingOpen(false);
-    showMessage(`${data.billing.plan.name} plan activated.`);
+    showMessage(
+      "Payment succeeded. Paddle is still confirming your plan; it will appear shortly."
+    );
   }
 
   async function startSubscription(planKey) {
@@ -677,7 +704,7 @@ function App() {
 
     try {
       setCheckoutPlan(planKey);
-      const response = await fetch(`${API_URL}/api/billing/subscriptions`, {
+      const response = await fetch(`${API_URL}/api/billing/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -689,31 +716,37 @@ function App() {
         throw new Error(data.message || "Could not start checkout.");
       }
 
-      await loadRazorpayCheckout();
-      const checkout = new window.Razorpay({
-        key: data.key_id,
-        subscription_id: data.subscription_id,
-        name: "DomainPulse",
-        description: `${data.plan.name} monthly plan`,
-        prefill: data.customer,
-        notes: { plan_key: data.plan.key },
-        theme: { color: "#181b19" },
-        handler: async (checkoutResponse) => {
-          try {
-            await verifySubscription(checkoutResponse);
-          } catch (error) {
-            console.error("Subscription verification error:", error);
-            showMessage(error.message, "error");
+      let completionHandled = false;
+      await initializePaddleCheckout({
+        clientToken: data.client_token,
+        environment: data.environment,
+        onEvent: (event) => {
+          if (event.name === "checkout.payment.failed") {
+            showMessage("Payment authorisation failed. Please try again.", "error");
+          }
+
+          if (event.name === "checkout.completed" && !completionHandled) {
+            completionHandled = true;
+            refreshBillingAfterCheckout(data.plan.key).catch((error) => {
+              console.error("Refresh billing after checkout error:", error);
+            });
           }
         },
       });
-      checkout.on("payment.failed", (event) => {
-        showMessage(
-          event.error?.description || "Payment authorisation failed.",
-          "error"
-        );
+
+      window.Paddle.Checkout.open({
+        items: [{ priceId: data.price_id, quantity: 1 }],
+        customer: { email: data.customer.email },
+        customData: {
+          domainpulse_checkout_token: data.checkout_token,
+        },
+        settings: {
+          displayMode: "overlay",
+          theme: "light",
+          locale: "en",
+          allowLogout: false,
+        },
       });
-      checkout.open();
     } catch (error) {
       console.error("Start subscription error:", error);
       showMessage(error.message || "Could not start checkout.", "error");
@@ -1084,6 +1117,9 @@ function App() {
   const usagePercentage = Math.min(
     (billingUsage.domains / Math.max(billingUsage.domain_limit, 1)) * 100,
     100
+  );
+  const subscribedPlan = PRICING_PLANS.find(
+    (plan) => plan.key === billing?.subscription?.plan_key
   );
   const selectedName = selectedDomain ? getDomainName(selectedDomain) : "";
   const selectedResult = selectedName ? checkResults[selectedName] : null;
@@ -1519,7 +1555,9 @@ function App() {
               <div className="current-subscription-card">
                 <div>
                   <span>Current subscription</span>
-                  <strong>{billingPlan.name} · {billing.subscription.status}</strong>
+                  <strong>
+                    {subscribedPlan?.name || billingPlan.name} · {billing.subscription.status}
+                  </strong>
                   {billing.subscription.current_end && (
                     <small>
                       Current cycle ends {formatDate(billing.subscription.current_end)}
@@ -1528,7 +1566,9 @@ function App() {
                 </div>
                 {billing.subscription.cancel_at_cycle_end ? (
                   <span className="cancellation-scheduled">Cancellation scheduled</span>
-                ) : billingPlan.key !== "free" ? (
+                ) : !["canceled", "completed"].includes(
+                    billing.subscription.status
+                  ) ? (
                   <button
                     type="button"
                     disabled={cancelingSubscription}
@@ -1549,7 +1589,10 @@ function App() {
                   !isPaid ||
                   !billing?.checkout_configured ||
                   Boolean(checkoutPlan) ||
-                  (billing?.subscription && billingPlan.key !== "free");
+                  (billing?.subscription &&
+                    !["canceled", "completed"].includes(
+                      billing.subscription.status
+                    ));
 
                 return (
                   <article
@@ -1584,7 +1627,7 @@ function App() {
             </div>
 
             <footer className="billing-modal-footer">
-              Razorpay securely processes payment details. DomainPulse never stores card data.
+              Paddle securely processes payments, taxes, and billing. DomainPulse never stores card data.
             </footer>
           </section>
         </>

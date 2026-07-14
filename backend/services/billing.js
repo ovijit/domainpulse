@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import Razorpay from "razorpay";
+import { Environment, Paddle } from "@paddle/paddle-node-sdk";
 
 export const PLAN_CATALOG = Object.freeze({
   free: {
@@ -32,7 +32,9 @@ export const PLAN_CATALOG = Object.freeze({
   },
 });
 
-const ENTITLED_STATUSES = new Set(["authenticated", "active"]);
+const ENTITLED_STATUSES = new Set(["active", "trialing", "authenticated"]);
+const TERMINAL_STATUSES = new Set(["canceled", "completed"]);
+const CHECKOUT_TOKEN_TTL_MS = 30 * 60 * 1000;
 
 export class BillingError extends Error {
   constructor(message, statusCode = 400, code = "billing_error") {
@@ -52,96 +54,233 @@ function secureEqual(value, expected) {
   );
 }
 
-function epochToDate(value) {
-  return value ? new Date(Number(value) * 1000) : null;
+function toDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 export function createBillingService(options) {
   const {
     pool,
-    keyId = process.env.RAZORPAY_KEY_ID,
-    keySecret = process.env.RAZORPAY_KEY_SECRET,
-    webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET,
+    apiKey = process.env.PADDLE_API_KEY,
+    clientToken = process.env.PADDLE_CLIENT_TOKEN,
+    webhookSecret = process.env.PADDLE_WEBHOOK_SECRET,
+    checkoutSecret =
+      process.env.PADDLE_CHECKOUT_SECRET || process.env.JWT_SECRET,
+    environmentName = process.env.PADDLE_ENVIRONMENT || "sandbox",
     enforcementEnabled = process.env.BILLING_ENFORCEMENT_ENABLED === "true",
-    planIds = {
-      starter: process.env.RAZORPAY_PLAN_STARTER_ID,
-      pro: process.env.RAZORPAY_PLAN_PRO_ID,
-      portfolio: process.env.RAZORPAY_PLAN_PORTFOLIO_ID,
+    priceIds = {
+      starter: process.env.PADDLE_PRICE_STARTER_ID,
+      pro: process.env.PADDLE_PRICE_PRO_ID,
+      portfolio: process.env.PADDLE_PRICE_PORTFOLIO_ID,
     },
-    razorpayClient,
+    paddleClient,
+    now = () => Date.now(),
   } = options;
-  const razorpay =
-    razorpayClient ||
-    (keyId && keySecret
-      ? new Razorpay({ key_id: keyId, key_secret: keySecret })
-      : null);
-  const planKeyById = new Map(
-    Object.entries(planIds)
+
+  const environment =
+    environmentName === "production"
+      ? Environment.production
+      : Environment.sandbox;
+  const paddle =
+    paddleClient ||
+    (apiKey ? new Paddle(apiKey, { environment }) : null);
+  const planKeyByPriceId = new Map(
+    Object.entries(priceIds)
       .filter(([, id]) => Boolean(id))
       .map(([key, id]) => [id, key])
   );
+  const baseConfigurationReady = Boolean(
+    paddle && clientToken && webhookSecret && checkoutSecret
+  );
+  const checkoutConfigurationReady =
+    baseConfigurationReady &&
+    ["starter", "pro", "portfolio"].every((key) => Boolean(priceIds[key]));
 
   function publicPlans() {
     return Object.values(PLAN_CATALOG).map((plan) => ({
       ...plan,
-      configured: plan.key === "free" || Boolean(planIds[plan.key]),
+      configured:
+        plan.key === "free" ||
+        (baseConfigurationReady && Boolean(priceIds[plan.key])),
     }));
   }
 
-  function requireRazorpay() {
-    if (!razorpay || !keyId || !keySecret) {
+  function requirePaddle() {
+    if (!paddle || !apiKey) {
       throw new BillingError(
-        "Razorpay Test Mode is not configured",
+        "Paddle is not fully configured",
         503,
         "billing_not_configured"
       );
     }
   }
 
-  function resolvePlanKey(subscription) {
-    const notesPlan = subscription?.notes?.plan_key;
-    if (notesPlan && PLAN_CATALOG[notesPlan]) return notesPlan;
-    return planKeyById.get(subscription?.plan_id) || null;
+  function requireCheckout(planKey) {
+    const plan = PLAN_CATALOG[planKey];
+
+    if (!plan || planKey === "free") {
+      throw new BillingError("Choose a paid plan", 400, "invalid_plan");
+    }
+
+    if (!baseConfigurationReady) {
+      throw new BillingError(
+        "Paddle Sandbox is not fully configured",
+        503,
+        "billing_not_configured"
+      );
+    }
+
+    if (!priceIds[planKey]) {
+      throw new BillingError(
+        `${plan.name} is not configured in Paddle`,
+        503,
+        "plan_not_configured"
+      );
+    }
+
+    return plan;
   }
 
-  async function upsertSubscription({ userId, planKey, subscription }) {
+  function signCheckoutToken({ userId, planKey }) {
+    const issuedAt = now();
+    const payload = Buffer.from(
+      JSON.stringify({
+        version: 1,
+        user_id: Number(userId),
+        plan_key: planKey,
+        issued_at: issuedAt,
+        expires_at: issuedAt + CHECKOUT_TOKEN_TTL_MS,
+      })
+    ).toString("base64url");
+    const signature = crypto
+      .createHmac("sha256", checkoutSecret)
+      .update(payload)
+      .digest("base64url");
+
+    return `${payload}.${signature}`;
+  }
+
+  function verifyCheckoutToken(token, occurredAt) {
+    if (!checkoutSecret || typeof token !== "string") return null;
+
+    const [payload, signature, extra] = token.split(".");
+    if (!payload || !signature || extra) return null;
+
+    const expected = crypto
+      .createHmac("sha256", checkoutSecret)
+      .update(payload)
+      .digest("base64url");
+    if (!secureEqual(signature, expected)) return null;
+
+    try {
+      const claims = JSON.parse(
+        Buffer.from(payload, "base64url").toString("utf8")
+      );
+      const eventTime = occurredAt ? new Date(occurredAt).getTime() : now();
+
+      if (
+        claims.version !== 1 ||
+        !Number.isInteger(claims.user_id) ||
+        !PLAN_CATALOG[claims.plan_key] ||
+        !Number.isFinite(eventTime) ||
+        eventTime < claims.issued_at - 5 * 60 * 1000 ||
+        eventTime > claims.expires_at
+      ) {
+        return null;
+      }
+
+      return claims;
+    } catch {
+      return null;
+    }
+  }
+
+  function resolvePlanKey(subscription) {
+    for (const item of subscription?.items || []) {
+      const planKey = planKeyByPriceId.get(item?.price?.id);
+      if (planKey) return planKey;
+    }
+
+    return null;
+  }
+
+  function subscriptionDates(subscription) {
+    return {
+      currentStart: toDate(subscription?.currentBillingPeriod?.startsAt),
+      currentEnd: toDate(subscription?.currentBillingPeriod?.endsAt),
+    };
+  }
+
+  async function upsertSubscription({
+    userId,
+    planKey,
+    subscription,
+    occurredAt,
+  }) {
+    const priceId = subscription?.items?.find((item) =>
+      planKeyByPriceId.has(item?.price?.id)
+    )?.price?.id;
+    const { currentStart, currentEnd } = subscriptionDates(subscription);
+    const providerUpdatedAt =
+      toDate(occurredAt) || toDate(subscription.updatedAt) || new Date(now());
+
     await pool.query(
       `
         INSERT INTO user_subscriptions (
           user_id,
           plan_key,
-          razorpay_plan_id,
-          razorpay_subscription_id,
+          payment_provider,
+          provider_price_id,
+          provider_subscription_id,
+          provider_customer_id,
           status,
           current_start,
           current_end,
           cancel_at_cycle_end,
+          provider_updated_at,
           updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        VALUES ($1, $2, 'paddle', $3, $4, $5, $6, $7, $8, $9, $10, NOW())
         ON CONFLICT (user_id)
         DO UPDATE SET
           plan_key = EXCLUDED.plan_key,
-          razorpay_plan_id = EXCLUDED.razorpay_plan_id,
-          razorpay_subscription_id = EXCLUDED.razorpay_subscription_id,
+          payment_provider = EXCLUDED.payment_provider,
+          provider_price_id = EXCLUDED.provider_price_id,
+          provider_subscription_id = EXCLUDED.provider_subscription_id,
+          provider_customer_id = EXCLUDED.provider_customer_id,
           status = EXCLUDED.status,
           current_start = EXCLUDED.current_start,
           current_end = EXCLUDED.current_end,
           cancel_at_cycle_end = EXCLUDED.cancel_at_cycle_end,
+          provider_updated_at = EXCLUDED.provider_updated_at,
           updated_at = NOW()
         WHERE
-          user_subscriptions.razorpay_subscription_id = EXCLUDED.razorpay_subscription_id
-          OR user_subscriptions.status NOT IN ('authenticated', 'active')
+          (
+            user_subscriptions.payment_provider = 'paddle'
+            AND user_subscriptions.provider_subscription_id = EXCLUDED.provider_subscription_id
+            AND (
+              user_subscriptions.provider_updated_at IS NULL
+              OR user_subscriptions.provider_updated_at <= EXCLUDED.provider_updated_at
+            )
+          )
+          OR (
+            user_subscriptions.status NOT IN ('active', 'trialing', 'authenticated')
+            AND EXCLUDED.status IN ('active', 'trialing')
+          )
       `,
       [
         userId,
         planKey,
-        subscription.plan_id,
+        priceId,
         subscription.id,
-        subscription.status || "created",
-        epochToDate(subscription.current_start),
-        epochToDate(subscription.current_end),
-        Boolean(subscription.cancel_at_cycle_end),
+        subscription.customerId || null,
+        subscription.status || "active",
+        currentStart,
+        currentEnd,
+        subscription?.scheduledChange?.action === "cancel",
+        providerUpdatedAt,
       ]
     );
   }
@@ -151,7 +290,8 @@ export function createBillingService(options) {
       `
         SELECT
           s.plan_key,
-          s.razorpay_subscription_id,
+          s.payment_provider,
+          s.provider_subscription_id,
           s.status,
           s.current_start,
           s.current_end,
@@ -163,7 +303,8 @@ export function createBillingService(options) {
         WHERE u.id = $1
         GROUP BY
           s.plan_key,
-          s.razorpay_subscription_id,
+          s.payment_provider,
+          s.provider_subscription_id,
           s.status,
           s.current_start,
           s.current_end,
@@ -180,9 +321,10 @@ export function createBillingService(options) {
 
     return {
       plan,
-      subscription: row.razorpay_subscription_id
+      subscription: row.provider_subscription_id
         ? {
-            id: row.razorpay_subscription_id,
+            id: row.provider_subscription_id,
+            provider: row.payment_provider,
             plan_key: row.plan_key,
             status: row.status,
             current_start: row.current_start,
@@ -199,7 +341,7 @@ export function createBillingService(options) {
         ),
       },
       enforcement_enabled: enforcementEnabled,
-      checkout_configured: Boolean(razorpay && keyId && keySecret),
+      checkout_configured: checkoutConfigurationReady,
     };
   }
 
@@ -220,39 +362,13 @@ export function createBillingService(options) {
     return summary;
   }
 
-  async function createSubscription({ user, planKey }) {
-    requireRazorpay();
-    const plan = PLAN_CATALOG[planKey];
-    const planId = planIds[planKey];
-
-    if (!plan || planKey === "free") {
-      throw new BillingError("Choose a paid plan", 400, "invalid_plan");
-    }
-
-    if (!planId) {
-      throw new BillingError(
-        `${plan.name} is not configured in Razorpay`,
-        503,
-        "plan_not_configured"
-      );
-    }
-
+  async function createCheckout({ user, planKey }) {
+    const plan = requireCheckout(planKey);
     const current = await getSummary(user.id);
-    if (
-      current.subscription?.status === "created" &&
-      current.subscription.plan_key === planKey
-    ) {
-      return {
-        key_id: keyId,
-        subscription_id: current.subscription.id,
-        plan,
-        customer: { name: user.name, email: user.email },
-      };
-    }
 
     if (
       current.subscription &&
-      ENTITLED_STATUSES.has(current.subscription.status)
+      !TERMINAL_STATUSES.has(current.subscription.status)
     ) {
       throw new BillingError(
         "Cancel the current subscription before choosing another plan",
@@ -261,85 +377,30 @@ export function createBillingService(options) {
       );
     }
 
-    const subscription = await razorpay.subscriptions.create({
-      plan_id: planId,
-      total_count: 120,
-      customer_notify: 1,
-      notes: {
-        user_id: String(user.id),
-        user_email: user.email,
-        plan_key: planKey,
-      },
-    });
-
-    await upsertSubscription({ userId: user.id, planKey, subscription });
-
     return {
-      key_id: keyId,
-      subscription_id: subscription.id,
+      provider: "paddle",
+      environment: environmentName === "production" ? "production" : "sandbox",
+      client_token: clientToken,
+      price_id: priceIds[planKey],
+      checkout_token: signCheckoutToken({ userId: user.id, planKey }),
       plan,
       customer: { name: user.name, email: user.email },
     };
   }
 
-  async function verifyCheckout({
-    userId,
-    paymentId,
-    subscriptionId,
-    signature,
-  }) {
-    requireRazorpay();
-
-    if (!paymentId || !subscriptionId || !signature) {
-      throw new BillingError(
-        "Incomplete Razorpay verification response",
-        400,
-        "verification_incomplete"
-      );
-    }
-
-    const expected = crypto
-      .createHmac("sha256", keySecret)
-      .update(`${paymentId}|${subscriptionId}`)
-      .digest("hex");
-
-    if (!secureEqual(signature, expected)) {
-      throw new BillingError(
-        "Payment signature could not be verified",
-        401,
-        "invalid_payment_signature"
-      );
-    }
-
-    const subscription = await razorpay.subscriptions.fetch(subscriptionId);
-    const notesUserId = Number(subscription?.notes?.user_id);
-    const planKey = resolvePlanKey(subscription);
-
-    if (notesUserId !== userId || !planKey) {
-      throw new BillingError(
-        "Subscription does not belong to this account",
-        403,
-        "subscription_owner_mismatch"
-      );
-    }
-
-    await upsertSubscription({ userId, planKey, subscription });
-    return getSummary(userId);
-  }
-
   async function cancelSubscription(userId) {
-    requireRazorpay();
+    requirePaddle();
     const result = await pool.query(
       `
-        SELECT razorpay_subscription_id
+        SELECT payment_provider, provider_subscription_id
         FROM user_subscriptions
         WHERE user_id = $1
       `,
       [userId]
     );
-    const subscriptionId = result.rows[0]?.razorpay_subscription_id;
+    const row = result.rows[0];
 
-    if (!subscriptionId) {
+    if (!row?.provider_subscription_id) {
       throw new BillingError(
         "No subscription was found",
         404,
@@ -347,34 +408,63 @@ export function createBillingService(options) {
       );
     }
 
-    const subscription = await razorpay.subscriptions.cancel(
-      subscriptionId,
-      { cancel_at_cycle_end: true }
+    if (row.payment_provider !== "paddle") {
+      throw new BillingError(
+        "This legacy subscription must be managed with its original payment provider",
+        409,
+        "legacy_subscription"
+      );
+    }
+
+    const subscription = await paddle.subscriptions.cancel(
+      row.provider_subscription_id
     );
     const planKey = resolvePlanKey(subscription);
 
     if (planKey) {
-      await upsertSubscription({ userId, planKey, subscription });
+      await upsertSubscription({
+        userId,
+        planKey,
+        subscription,
+        occurredAt: subscription.updatedAt,
+      });
     }
 
     return getSummary(userId);
   }
 
+  async function findUserIdBySubscriptionId(subscriptionId) {
+    const result = await pool.query(
+      `
+        SELECT user_id
+        FROM user_subscriptions
+        WHERE payment_provider = 'paddle'
+          AND provider_subscription_id = $1
+      `,
+      [subscriptionId]
+    );
+    return result.rows[0]?.user_id || null;
+  }
+
   async function handleWebhook({ rawBody, signature }) {
+    requirePaddle();
+
     if (!webhookSecret) {
       throw new BillingError(
-        "Razorpay webhook is not configured",
+        "Paddle webhook is not configured",
         503,
         "webhook_not_configured"
       );
     }
 
-    const expected = crypto
-      .createHmac("sha256", webhookSecret)
-      .update(rawBody)
-      .digest("hex");
-
-    if (!secureEqual(signature, expected)) {
+    let event;
+    try {
+      event = await paddle.webhooks.unmarshal(
+        rawBody.toString("utf8"),
+        webhookSecret,
+        signature
+      );
+    } catch {
       throw new BillingError(
         "Invalid webhook signature",
         401,
@@ -382,30 +472,47 @@ export function createBillingService(options) {
       );
     }
 
-    const event = JSON.parse(rawBody.toString("utf8"));
-    const subscription = event?.payload?.subscription?.entity;
-
-    if (!subscription?.id) {
-      return { processed: false, event: event.event };
+    if (!event?.eventType?.startsWith("subscription.") || !event.data?.id) {
+      return { processed: false, event: event?.eventType || "unknown" };
     }
 
-    const userId = Number(subscription?.notes?.user_id);
+    const subscription = event.data;
     const planKey = resolvePlanKey(subscription);
-
-    if (!Number.isInteger(userId) || !planKey) {
-      return { processed: false, event: event.event };
+    if (!planKey) {
+      return { processed: false, event: event.eventType };
     }
 
-    await upsertSubscription({ userId, planKey, subscription });
-    return { processed: true, event: event.event };
+    let userId = await findUserIdBySubscriptionId(subscription.id);
+
+    if (!userId) {
+      const customData = subscription.customData || {};
+      const token =
+        customData.domainpulse_checkout_token ||
+        customData.domainpulseCheckoutToken;
+      const claims = verifyCheckoutToken(token, event.occurredAt);
+
+      if (!claims || claims.plan_key !== planKey) {
+        return { processed: false, event: event.eventType };
+      }
+
+      userId = claims.user_id;
+    }
+
+    await upsertSubscription({
+      userId,
+      planKey,
+      subscription,
+      occurredAt: event.occurredAt,
+    });
+
+    return { processed: true, event: event.eventType };
   }
 
   return {
     publicPlans,
     getSummary,
     assertCapacity,
-    createSubscription,
-    verifyCheckout,
+    createCheckout,
     cancelSubscription,
     handleWebhook,
   };

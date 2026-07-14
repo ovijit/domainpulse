@@ -64,7 +64,7 @@ app.use(
 app.use(
   express.json({
     verify(req, res, buffer) {
-      if (req.originalUrl === "/api/webhooks/razorpay") {
+      if (req.originalUrl === "/api/webhooks/paddle") {
         req.rawBody = Buffer.from(buffer);
       }
     },
@@ -197,15 +197,53 @@ async function setupDatabase() {
       id BIGSERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
       plan_key TEXT NOT NULL CHECK (plan_key IN ('starter', 'pro', 'portfolio')),
-      razorpay_plan_id TEXT NOT NULL,
-      razorpay_subscription_id TEXT NOT NULL UNIQUE,
-      status TEXT NOT NULL DEFAULT 'created',
+      payment_provider TEXT NOT NULL DEFAULT 'paddle',
+      provider_price_id TEXT,
+      provider_subscription_id TEXT,
+      provider_customer_id TEXT,
+      razorpay_plan_id TEXT,
+      razorpay_subscription_id TEXT UNIQUE,
+      status TEXT NOT NULL DEFAULT 'active',
       current_start TIMESTAMPTZ,
       current_end TIMESTAMPTZ,
       cancel_at_cycle_end BOOLEAN NOT NULL DEFAULT FALSE,
+      provider_updated_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS payment_provider TEXT;
+    ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS provider_price_id TEXT;
+    ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS provider_subscription_id TEXT;
+    ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS provider_customer_id TEXT;
+    ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS provider_updated_at TIMESTAMPTZ;
+    ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS razorpay_plan_id TEXT;
+    ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS razorpay_subscription_id TEXT;
+
+    ALTER TABLE user_subscriptions ALTER COLUMN razorpay_plan_id DROP NOT NULL;
+    ALTER TABLE user_subscriptions ALTER COLUMN razorpay_subscription_id DROP NOT NULL;
+
+    UPDATE user_subscriptions
+    SET
+      payment_provider = 'razorpay',
+      provider_price_id = COALESCE(provider_price_id, razorpay_plan_id),
+      provider_subscription_id = COALESCE(
+        provider_subscription_id,
+        razorpay_subscription_id
+      )
+    WHERE razorpay_subscription_id IS NOT NULL
+      AND payment_provider IS NULL;
+
+    UPDATE user_subscriptions
+    SET payment_provider = 'paddle'
+    WHERE payment_provider IS NULL;
+
+    ALTER TABLE user_subscriptions ALTER COLUMN payment_provider SET DEFAULT 'paddle';
+    ALTER TABLE user_subscriptions ALTER COLUMN payment_provider SET NOT NULL;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS user_subscriptions_provider_id_unique
+      ON user_subscriptions (provider_subscription_id)
+      WHERE provider_subscription_id IS NOT NULL;
 
     CREATE INDEX IF NOT EXISTS user_subscriptions_status_idx
       ON user_subscriptions (status);
@@ -378,41 +416,21 @@ app.get("/api/billing/subscription", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/billing/subscriptions", requireAuth, async (req, res) => {
+app.post("/api/billing/checkout", requireAuth, async (req, res) => {
   try {
-    const result = await billingService.createSubscription({
+    const result = await billingService.createCheckout({
       user: req.user,
       planKey: req.body.plan_key,
     });
-    res.status(201).json(result);
+    res.json(result);
   } catch (error) {
     if (error instanceof BillingError) {
       return res
         .status(error.statusCode)
         .json({ message: error.message, code: error.code });
     }
-    console.error("Create subscription error:", error);
-    res.status(500).json({ message: "Failed to create subscription" });
-  }
-});
-
-app.post("/api/billing/verify", requireAuth, async (req, res) => {
-  try {
-    const result = await billingService.verifyCheckout({
-      userId: req.user.id,
-      paymentId: req.body.razorpay_payment_id,
-      subscriptionId: req.body.razorpay_subscription_id,
-      signature: req.body.razorpay_signature,
-    });
-    res.json({ message: "Subscription verified", billing: result });
-  } catch (error) {
-    if (error instanceof BillingError) {
-      return res
-        .status(error.statusCode)
-        .json({ message: error.message, code: error.code });
-    }
-    console.error("Verify subscription error:", error);
-    res.status(500).json({ message: "Failed to verify subscription" });
+    console.error("Create Paddle checkout error:", error);
+    res.status(500).json({ message: "Failed to create checkout" });
   }
 });
 
@@ -434,7 +452,7 @@ app.post("/api/billing/cancel", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/webhooks/razorpay", async (req, res) => {
+app.post("/api/webhooks/paddle", async (req, res) => {
   try {
     if (!req.rawBody) {
       return res.status(400).json({ message: "Raw webhook body is required" });
@@ -442,7 +460,7 @@ app.post("/api/webhooks/razorpay", async (req, res) => {
 
     const result = await billingService.handleWebhook({
       rawBody: req.rawBody,
-      signature: req.get("x-razorpay-signature") || "",
+      signature: req.get("paddle-signature") || "",
     });
     res.json(result);
   } catch (error) {
@@ -451,7 +469,7 @@ app.post("/api/webhooks/razorpay", async (req, res) => {
         .status(error.statusCode)
         .json({ message: error.message, code: error.code });
     }
-    console.error("Razorpay webhook error:", error);
+    console.error("Paddle webhook error:", error);
     res.status(500).json({ message: "Webhook processing failed" });
   }
 });
